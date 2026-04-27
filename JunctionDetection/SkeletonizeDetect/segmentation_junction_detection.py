@@ -226,14 +226,10 @@ def prune_small_cycles(skeleton: np.ndarray) -> np.ndarray:
         return skeleton
 
     result = skeleton.copy()
-    for idx, row in stats.iterrows():
-        edge = (min(int(row['node-id-src']), int(row['node-id-dst'])),
-                max(int(row['node-id-src']), int(row['node-id-dst'])))
-        if edge in branches_to_remove:
-            coords = skel_obj.path_coordinates(idx).astype(int)
-            # Remove inner pixels, preserve junction endpoints
-            for r, c in coords[1:-1]:
-                result[r, c] = 0
+    for u, v in branches_to_remove:
+        # u, v are pixel indices into skel_obj.coordinates — remove one to break the cycle
+        r, c = int(skel_obj.coordinates[u][0]), int(skel_obj.coordinates[u][1])
+        result[r, c] = 0
 
     return skeletonize(result > 0).astype(np.uint8)
 

@@ -122,6 +122,7 @@ def evaluate_stitched_mask_and_plot(
     did_remove_small_objects: bool,
     ax=None,
     comparison_mask: torch.Tensor | None = None,
+    plot_grid: bool = True,
 ) -> tuple:
     """Compute metrics and plot for an already-stitched prediction mask.
 
@@ -184,6 +185,7 @@ def evaluate_stitched_mask_and_plot(
             skeleton=pred_skeleton,
             ax=ax,
             figsize=(10, 10),
+            plot_grid= plot_grid,
         )
 
     return (dice, iou, clDice, tprec, tsens)
@@ -196,6 +198,7 @@ def evaluate_full_image_patches(
     patch_size: tuple = PATCH_SIZE,
     grid_size: tuple = GRID_SIZE,
     output_probs: torch.Tensor | None = None,
+    plot_grid: bool = True,
 ) -> tuple:
     """Evaluate a full image reconstructed from prediction patches.
 
@@ -236,11 +239,12 @@ def evaluate_full_image_patches(
 
     result_1 = evaluate_stitched_mask_and_plot(
         pred_cleaned, groundtruth_mask, original_img,
-        did_remove_small_objects=True, ax=axes[0])
+        did_remove_small_objects=True, ax=axes[0], plot_grid=plot_grid)
 
     result_2 = evaluate_stitched_mask_and_plot(
         pred_raw, groundtruth_mask, original_img,
-        did_remove_small_objects=False, ax=axes[1], comparison_mask=pred_cleaned)
+        did_remove_small_objects=False, ax=axes[1], 
+        comparison_mask=pred_cleaned, plot_grid=plot_grid)
 
     plt.tight_layout()
     plt.show()
@@ -287,8 +291,7 @@ def evaluate_soi_patch(
     cleaned = remove_small_objects_from_batch(
         pred_mask.unsqueeze(0)).squeeze(0).detach().cpu()  # (1, H, W)
 
-    pred_junction_coords_3way, pred_junction_coords_4way, pred_skeleton = detect_junctions_in_segmentation_mask(
-        cleaned)
+    pred_junction_coords_3way, pred_junction_coords_4way, pred_skeleton = detect_junctions_in_segmentation_mask(cleaned)
 
     comparison_mask = (pred_mask == 1) & (cleaned == 0)
     missed_gt = (groundtruth_mask == 1) & (cleaned == 0)
