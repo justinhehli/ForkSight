@@ -242,16 +242,30 @@ def plot_junctions(df: pd.DataFrame, junction_detection_dir: Path):
         f"\nSaved {len(image_files)} plots to {plots_dir} ({n_with_points} with points)")
 
 
+LABEL_ORDER = ["Normal Fork", "Crossing", "Reversed Fork", "Negative"]
+
+
 def plot_label_stats(df: pd.DataFrame, junction_detection_dir: Path):
-    """Bar plot: images per label + images with multiple annotations / mixed label types."""
+    """Two bar plots: (1) images per label, (2) total annotations per label."""
     plots_dir = junction_detection_dir / "plots"
     plots_dir.mkdir(exist_ok=True)
 
-    # Count distinct images per label
-    per_label = (
+    # Count distinct images per label (fixed order)
+    per_label_images = (
         df.groupby("label")["image"]
         .nunique()
-        .sort_values(ascending=False)
+        .reindex(LABEL_ORDER)
+        .dropna()
+        .astype(int)
+    )
+
+    # Total annotations per label (fixed order)
+    per_label_total = (
+        df.groupby("label")
+        .size()
+        .reindex(LABEL_ORDER)
+        .dropna()
+        .astype(int)
     )
 
     # Images with more than one annotation row
@@ -262,22 +276,46 @@ def plot_label_stats(df: pd.DataFrame, junction_detection_dir: Path):
     label_counts = df.groupby("image")["label"].nunique()
     n_mixed_labels = (label_counts > 1).sum()
 
-    labels = list(per_label.index) + \
+    # --- Plot 1: Images per label ---
+    labels1 = list(per_label_images.index) + \
         ["Multiple annotations", "Mixed label types"]
-    counts = list(per_label.values) + [n_multi_annot, n_mixed_labels]
-    colors = ["steelblue"] * len(per_label) + ["orange", "tomato"]
+    counts1 = list(per_label_images.values) + [n_multi_annot, n_mixed_labels]
+    colors1 = ["steelblue"] * len(per_label_images) + ["orange", "tomato"]
 
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 1.2), 5))
-    bars = ax.bar(labels, counts, color=colors)
-    ax.bar_label(bars, padding=3)
-    ax.set_ylabel("Number of images")
-    ax.set_title("Images per annotation label")
-    plt.xticks(rotation=25, ha="right")
-    fig.tight_layout()
-    out = plots_dir / "label_stats.png"
-    fig.savefig(out, dpi=150)
-    plt.close(fig)
-    print(f"Saved label stats plot to {out}")
+    fig1, ax1 = plt.subplots(figsize=(4, 5))
+    bars1 = ax1.bar(labels1, counts1, color=colors1)
+    ax1.bar_label(bars1, padding=3)
+    ax1.set_ylabel("Number of Images")
+    ax1.set_title("Images per Annotation Label")
+    ax1.set_ylim(top=ax1.get_ylim()[1] * 1.15)
+    plt.xticks(rotation=30, ha="right")
+    fig1.tight_layout()
+
+    # --- Plot 2: Total annotations per label ---
+    fig2, ax2 = plt.subplots(figsize=(4, 5))
+    bars2 = ax2.bar(per_label_total.index,
+                    per_label_total.values, color="steelblue")
+    ax2.bar_label(bars2, padding=3)
+    ax2.set_ylabel("Number of Annotations")
+    ax2.set_title("Total Annotations per Label")
+    ax2.set_ylim(top=ax2.get_ylim()[1] * 1.15)
+    plt.xticks(rotation=30, ha="right")
+    fig2.tight_layout()
+
+    # --- Equalize bottom margins across both figures ---
+    bottom = max(fig1.subplotpars.bottom, fig2.subplotpars.bottom)
+    fig1.subplots_adjust(bottom=bottom)
+    fig2.subplots_adjust(bottom=bottom)
+
+    out1 = plots_dir / "junction_detection_dataset_annotations_per_image.png"
+    fig1.savefig(out1, dpi=150)
+    plt.close(fig1)
+    print(f"Saved label stats (images) plot to {out1}")
+
+    out2 = plots_dir / "junction_detection_dataset_annotations_total.png"
+    fig2.savefig(out2, dpi=150)
+    plt.close(fig2)
+    print(f"Saved label stats (annotations) plot to {out2}")
 
 
 def main():
@@ -295,57 +333,64 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Merge Final.json and agreed.csv annotations.")
-    parser.add_argument("--json", required=True, help="Path to Final.json")
-    parser.add_argument("--csv", required=True, help="Path to agreed.csv")
+    parser.add_argument("--json", help="Path to Final.json")
+    parser.add_argument("--csv", help="Path to agreed.csv")
     parser.add_argument("--move-excluded", action="store_true", default=False,
                         help="Detect, list, and move images with no annotations to images_excluded/")
     parser.add_argument("--plot-junctions", action="store_true", default=False,
                         help="Save per-image junction plots to junction_plots/ (images must be in images/)")
     parser.add_argument("--plot-stats", action="store_true", default=False,
                         help="Save label distribution bar plot to plots/")
-    parser.add_argument("--force-recompute", action="store_true", default=False,
+    parser.add_argument("--plot-only", action="store_true", default=False,
                         help="Recompute and overwrite the output CSV even if it already exists")
     args = parser.parse_args()
 
     junction_detection_dir = Path(RAW_DATA_DIR) / JUNCTION_DETECTION_DIR_NAME
-
-    setup_images_dir(junction_detection_dir)
-    normalize_image_filenames(junction_detection_dir)
-    delete_excluded_images(junction_detection_dir)
-
     output_path = junction_detection_dir / JUNCTION_DETECTION_RELABELING_FILE_NAME
-    if output_path.exists():
-        output_path.unlink()
-    df_json = load_final_json(args.json)
-    df_csv = load_agreed_csv(args.csv)
-    print(f"JSON points: {len(df_json)}, CSV points: {len(df_csv)}")
-    merged = pd.concat([df_json, df_csv], ignore_index=True)
 
-    # remove annotations for images that were manually excluded
-    excluded_txt = Path(__file__).parent / "excluded_images.txt"
-    if excluded_txt.exists():
-        images_manually_excluded = {
-            line.strip() for line in excluded_txt.read_text().splitlines() if line.strip()}
-        merged = merged[~merged["image"].isin(images_manually_excluded)]
+    if not args.plot_only:
+        if not args.json or not args.csv:
+            raise ValueError("--json and --csv arguments must not be empty")
 
-    merged.to_csv(output_path, index=False)
-    print(f"Wrote {len(merged)} rows to {output_path}")
+        setup_images_dir(junction_detection_dir)
+        normalize_image_filenames(junction_detection_dir)
+        delete_excluded_images(junction_detection_dir)
 
-    # Resize non-4096 images and update coordinates before any plotting or exclusion
-    merged, did_resize = resize_images_to_target(
-        merged, junction_detection_dir)
-    if did_resize:
-        merged.to_csv(output_path, index=False)
-        print(f"Updated {output_path} with rescaled coordinates")
+        if output_path.exists():
+            output_path.unlink()
+        df_json = load_final_json(args.json)
+        df_csv = load_agreed_csv(args.csv)
+        print(f"JSON points: {len(df_json)}, CSV points: {len(df_csv)}")
+        df_merged = pd.concat([df_json, df_csv], ignore_index=True)
 
-    if args.move_excluded:
-        move_excluded(merged, junction_detection_dir)
+        # remove annotations for images that were manually excluded
+        excluded_txt = Path(__file__).parent / "excluded_images.txt"
+        if excluded_txt.exists():
+            images_manually_excluded = {
+                line.strip() for line in excluded_txt.read_text().splitlines() if line.strip()}
+            df_merged = df_merged[~df_merged["image"].isin(
+                images_manually_excluded)]
+
+        df_merged.to_csv(output_path, index=False)
+        print(f"Wrote {len(df_merged)} rows to {output_path}")
+
+        # Resize non-4096 images and update coordinates before any plotting or exclusion
+        df_merged, did_resize = resize_images_to_target(
+            df_merged, junction_detection_dir)
+        if did_resize:
+            df_merged.to_csv(output_path, index=False)
+            print(f"Updated {output_path} with rescaled coordinates")
+
+        if args.move_excluded:
+            move_excluded(df_merged, junction_detection_dir)
+    else:
+        df_merged = pd.read_csv(output_path)
 
     if args.plot_junctions:
-        plot_junctions(merged, junction_detection_dir)
+        plot_junctions(df_merged, junction_detection_dir)
 
     if args.plot_stats:
-        plot_label_stats(merged, junction_detection_dir)
+        plot_label_stats(df_merged, junction_detection_dir)
 
 
 if __name__ == "__main__":
