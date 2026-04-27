@@ -13,7 +13,7 @@ from Segmentation.PostProcessing.segmentation_postprocessing import remove_small
 # minimum length of significan branch for a junction
 MIN_BRANCH_LENGTH = 100
 # upper length limit for a branch connecting two junctions to be considered part of a 4-way junction (H shape)
-MAX_JUNCTION_CONNECTOR_LENGTH = 20
+MAX_JUNCTION_CONNECTOR_LENGTH = 40
 # terminal branches shorter than this are pruned (if a junction has multiple terminal branches, the longest is preserved to avoid over-pruning)
 MIN_TERMINAL_BRANCH_LENGTH = 40
 # junctions on cycles with total length below this are excluded, junctions on larger cycles may be valid
@@ -25,11 +25,13 @@ MAX_3WAY_PRIORITY_DISTANCE = 500
 # junctions of any type within this pixel distance of each other are merged into one
 JUNCTION_MERGE_DISTANCE = 50
 # skeleton tip pairs within this pixel distance whose trajectories align are reconnected (gap repair)
-MAX_SKELETON_GAP_DISTANCE = 30
+MAX_SKELETON_GAP_DISTANCE = 40
 # maximum angle (degrees) between a branch trajectory and the gap vector for reconnection
 MAX_GAP_ANGLE_DEG = 20
 # number of pixels along a branch used to estimate its tip direction for gap reconnection
 GAP_DIRECTION_SAMPLE_LENGTH = 20
+# skeleton cycles with total perimeter below this are collapsed by removing the shortest edge
+MIN_SMALL_CYCLE_PRUNE_LENGTH = 100
 
 
 def skeletonize_mask(segmentation_mask: torch.Tensor) -> np.ndarray:
@@ -186,6 +188,52 @@ def reconnect_skeleton_gaps(skeleton: np.ndarray) -> np.ndarray:
         result[rr, cc] = 1
         used.add(i)
         used.add(j)
+
+    return skeletonize(result > 0).astype(np.uint8)
+
+
+def prune_small_cycles(skeleton: np.ndarray) -> np.ndarray:
+    """Collapse tiny cycles (perimeter < MIN_SMALL_CYCLE_PRUNE_LENGTH) by
+    removing the shortest edge in each, reducing small loops to single paths."""
+    skel_obj = Skeleton(skeleton)
+    stats = summarize(skel_obj)
+    stats = stats[stats['node-id-src'] != stats['node-id-dst']]
+
+    nx_graph = nx.from_scipy_sparse_array(skel_obj.graph)
+
+    branches_to_remove = set()
+    for cycle in nx.cycle_basis(nx_graph):
+        cycle_length = sum(
+            nx_graph[cycle[i]][cycle[(i + 1) % len(cycle)]].get('weight', 0)
+            for i in range(len(cycle))
+        )
+        if cycle_length >= MIN_SMALL_CYCLE_PRUNE_LENGTH:
+            continue
+
+        # Break the cycle by removing its shortest edge
+        min_weight = float('inf')
+        min_edge = None
+        for i in range(len(cycle)):
+            u, v = cycle[i], cycle[(i + 1) % len(cycle)]
+            w = nx_graph[u][v].get('weight', 0)
+            if w < min_weight:
+                min_weight = w
+                min_edge = (min(u, v), max(u, v))
+        if min_edge is not None:
+            branches_to_remove.add(min_edge)
+
+    if not branches_to_remove:
+        return skeleton
+
+    result = skeleton.copy()
+    for idx, row in stats.iterrows():
+        edge = (min(int(row['node-id-src']), int(row['node-id-dst'])),
+                max(int(row['node-id-src']), int(row['node-id-dst'])))
+        if edge in branches_to_remove:
+            coords = skel_obj.path_coordinates(idx).astype(int)
+            # Remove inner pixels, preserve junction endpoints
+            for r, c in coords[1:-1]:
+                result[r, c] = 0
 
     return skeletonize(result > 0).astype(np.uint8)
 
@@ -431,6 +479,7 @@ def detect_junctions_in_segmentation_mask(
     skeleton = skeletonize_mask(segmentation_mask)
     skeleton = prune_skeleton(skeleton)
     skeleton = reconnect_skeleton_gaps(skeleton)
+    skeleton = prune_small_cycles(skeleton)
 
     _, _, degrees = get_graph_coordinates_degrees(skeleton)
 
