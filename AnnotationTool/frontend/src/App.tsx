@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDropDown as ArrowDropDownIcon,
+  BarChart as BarChartIcon,
   CheckCircle as CheckCircleIcon,
   DarkMode as DarkModeIcon,
   Delete as DeleteIcon,
@@ -20,6 +21,9 @@ import {
   Chip,
   CircularProgress,
   CssBaseline,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   Drawer,
   FormControl,
@@ -81,6 +85,7 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
+  const [overviewOpen, setOverviewOpen] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,6 +96,13 @@ const App = () => {
   const currentAnnotations: ImageAnnotations = annotations.images[currentImageName] ?? EMPTY_IMG_ANNOTATIONS;
   const processedCount = images.filter((i) => i.processed).length;
   const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
+  const stats = useMemo(() => {
+    const allPoints = Object.values(annotations.images).flatMap((a) => a.points);
+    const replicationForks = allPoints.filter((p) => p.label === JunctionType.ReplicationFork).length;
+    const reversedForks = allPoints.filter((p) => p.label === JunctionType.ReversedFork).length;
+    const ratio = reversedForks > 0 ? (replicationForks / reversedForks).toFixed(2) : "—";
+    return { replicationForks, reversedForks, ratio };
+  }, [annotations.images]);
 
   // bootstrap - load projects
   // ====================
@@ -387,6 +399,18 @@ const App = () => {
               </MenuItem>
             </Menu>
 
+            <Tooltip title="Project overview">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setOverviewOpen(true)}
+                  disabled={!!error || !selectedProject || pipelineStatus !== PipelineStatus.Done}
+                >
+                  <BarChartIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+
             <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
               <IconButton size="small" onClick={toggleMode}>
                 {mode === "dark" ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
@@ -624,6 +648,31 @@ const App = () => {
           </Box>
         </Box>
       </Box>
+      <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{selectedProject}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 1.5, columnGap: 4, alignItems: "baseline", py: 1 }}>
+            <Typography variant="body2" color="text.secondary">Total images</Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">{images.length}</Typography>
+
+            <Typography variant="body2" color="text.secondary">Processed images</Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">{processedCount}</Typography>
+
+            <Divider sx={{ gridColumn: "1 / -1" }} />
+
+            <Typography variant="body2" color="text.secondary">Replication forks</Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.replicationForks}</Typography>
+
+            <Typography variant="body2" color="text.secondary">Reversed forks</Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.reversedForks}</Typography>
+
+            <Divider sx={{ gridColumn: "1 / -1" }} />
+
+            <Typography variant="body2" color="text.secondary">Replication / reversed ratio</Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.ratio}</Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </ThemeProvider>
   );
 };

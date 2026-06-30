@@ -27,16 +27,9 @@ app.add_middleware(
 # ====================
 
 
-class Point(BaseModel):
-    id: str
-    x: int
-    y: int
-    label: str
-
-
-class ImageAnnotations(BaseModel):
-    processed: bool
-    points: list[Point]
+class JunctionType(str, Enum):
+    ReplicationFork = "Replication Fork"
+    ReversedFork = "Reversed Fork"
 
 
 class PipelineStatus(str, Enum):
@@ -44,6 +37,18 @@ class PipelineStatus(str, Enum):
     Running = "Running"
     Done = "Done"
     Failed = "Failed"
+
+
+class Point(BaseModel):
+    id: str
+    x: int
+    y: int
+    label: JunctionType
+
+
+class ImageAnnotations(BaseModel):
+    processed: bool
+    points: list[Point]
 
 
 # helpers
@@ -120,7 +125,29 @@ def save_image_annotations(project: str, image_name: str, data: ImageAnnotations
 @app.post("/projects/{project}/export")
 def export_project(project: str):
     ann = load_annotations(project_dir(project))
-    content = json.dumps(ann["images"], indent=2, ensure_ascii=False)
+    images = ann["images"]
+
+    all_points = [p for img_ann in images.values()
+                  for p in img_ann.get("points", [])]
+    replication_forks = sum(
+        1 for p in all_points if p["label"] == JunctionType.ReplicationFork)
+    reversed_forks = sum(
+        1 for p in all_points if p["label"] == JunctionType.ReversedFork)
+    processed_count = sum(1 for img_ann in images.values()
+                          if img_ann.get("processed", False))
+
+    export_data = {
+        "summary": {
+            "total_images": len(images),
+            "processed_images": processed_count,
+            "replication_fork_count": replication_forks,
+            "reversed_fork_count": reversed_forks,
+            "replication_reversed_ratio": round(replication_forks / reversed_forks, 3) if reversed_forks > 0 else None,
+        },
+        "images": images,
+    }
+
+    content = json.dumps(export_data, indent=2, ensure_ascii=False)
     return Response(
         content=content,
         media_type="application/json",
