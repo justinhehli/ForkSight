@@ -263,7 +263,18 @@ const App = () => {
           <Box sx={{ p: 1.5 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Project</InputLabel>
-              <Select value={selectedProject} label="Project" onChange={(e) => setSelectedProject(e.target.value)}>
+              <Select
+                value={selectedProject}
+                label="Project"
+                onChange={(e) => {
+                  setSelectedProject(e.target.value);
+                  setImages([]);
+                  setAnnotations(EMPTY_PROJECT);
+                  setImageIdx(0);
+                  setSelectedPointId(null);
+                  setError(null);
+                }}
+              >
                 {projects.map((p) => (
                   <MenuItem key={p} value={p}>
                     {p}
