@@ -1,0 +1,631 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowDropDown as ArrowDropDownIcon,
+  CheckCircle as CheckCircleIcon,
+  DarkMode as DarkModeIcon,
+  Delete as DeleteIcon,
+  FileDownload as FileDownloadIcon,
+  LightMode as LightModeIcon,
+  NavigateBefore,
+  NavigateNext,
+  PlayArrow as PlayArrowIcon,
+  RadioButtonUnchecked as RadioButtonUncheckedIcon,
+  TaskAlt as TaskAltIcon,
+} from "@mui/icons-material";
+import {
+  Alert,
+  Box,
+  Button,
+  ButtonGroup,
+  Chip,
+  CircularProgress,
+  CssBaseline,
+  Divider,
+  Drawer,
+  FormControl,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Select,
+  ThemeProvider,
+  Toolbar,
+  Tooltip,
+  Typography,
+  createTheme,
+} from "@mui/material";
+import {
+  exportProject,
+  getAnnotations,
+  getImages,
+  getProjects,
+  runJunctionDetection,
+  saveImageAnnotations,
+} from "./api";
+import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
+import { JunctionType, PipelineStatus } from "./types";
+import type { ImageAnnotations, ImageMeta, ProjectAnnotations } from "./types";
+import React from "react";
+
+const DRAWER_WIDTH = 270;
+const LABELS = Object.values(JunctionType) as JunctionType[];
+
+const EMPTY_IMG_ANNOTATIONS: ImageAnnotations = { processed: false, points: [] };
+const EMPTY_PROJECT: ProjectAnnotations = { junction_detection_pipeline_status: PipelineStatus.Idle, images: {} };
+
+const App = () => {
+  // state
+  // ====================
+  const [mode, setMode] = useState<"light" | "dark">(
+    () => (localStorage.getItem("colorMode") as "light" | "dark") ?? "dark",
+  );
+  const theme = useMemo(() => createTheme({ palette: { mode } }), [mode]);
+  const toggleMode = () =>
+    setMode((m) => {
+      const next = m === "dark" ? "light" : "dark";
+      localStorage.setItem("colorMode", next);
+      return next;
+    });
+
+  const [projects, setProjects] = useState<string[]>([]);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [images, setImages] = useState<ImageMeta[]>([]);
+  const [imageIdx, setImageIdx] = useState(0);
+  const [annotations, setAnnotations] = useState<ProjectAnnotations>(EMPTY_PROJECT);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // derived values
+  // ====================
+  const pipelineStatus = annotations.junction_detection_pipeline_status;
+  const currentImageName = images[imageIdx]?.name ?? "";
+  const currentAnnotations: ImageAnnotations = annotations.images[currentImageName] ?? EMPTY_IMG_ANNOTATIONS;
+  const processedCount = images.filter((i) => i.processed).length;
+  const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
+
+  // bootstrap - load projects
+  // ====================
+  useEffect(() => {
+    getProjects()
+      .then((ps) => {
+        setProjects(ps);
+      })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  // load selected project data
+  // ====================
+  const loadSelectedProject = useCallback(() => {
+    if (!selectedProject) return;
+
+    setLoading(true);
+    setError(null);
+    setSelectedPointId(null);
+
+    Promise.all([getImages(selectedProject), getAnnotations(selectedProject)])
+      .then(([imgs, ann]) => {
+        setImages(imgs);
+        setAnnotations(ann);
+        const firstUnprocessed = imgs.findIndex((img) => !img.processed);
+        setImageIdx(firstUnprocessed >= 0 ? firstUnprocessed : 0);
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [selectedProject]);
+
+  useEffect(() => {
+    loadSelectedProject();
+  }, [loadSelectedProject]);
+
+  // auto-save
+  // ====================
+  const scheduleSave = useCallback(
+    (imageName: string, data: ImageAnnotations) => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+
+      saveTimerRef.current = setTimeout(() => {
+        saveImageAnnotations(selectedProject, imageName, data).catch((e) => console.error("Save failed:", e));
+
+        // update image meta data (used in sidebar) processed label
+        setImages((prev) => prev.map((img) => (img.name === imageName ? { ...img, processed: data.processed } : img)));
+      }, 600);
+    },
+    [selectedProject],
+  );
+
+  const handleAnnotationsChange = useCallback(
+    (updated: ImageAnnotations) => {
+      const rounded: ImageAnnotations = {
+        ...updated,
+        points: updated.points.map((p) => ({ ...p, x: Math.round(p.x), y: Math.round(p.y) })),
+      };
+      setAnnotations((prev) => ({ ...prev, images: { ...prev.images, [currentImageName]: rounded } }));
+      scheduleSave(currentImageName, rounded);
+    },
+    [currentImageName, scheduleSave],
+  );
+
+  // actions
+  // ====================
+  const toggleImageProcessed = useCallback(() => {
+    handleAnnotationsChange({ ...currentAnnotations, processed: !currentAnnotations.processed });
+  }, [currentAnnotations, handleAnnotationsChange]);
+
+  const deletePoint = (id: string) => {
+    handleAnnotationsChange({ ...currentAnnotations, points: currentAnnotations.points.filter((p) => p.id !== id) });
+    if (selectedPointId === id) {
+      setSelectedPointId(null);
+    }
+  };
+
+  const changePointJunctionType = (id: string, label: JunctionType) => {
+    handleAnnotationsChange({
+      ...currentAnnotations,
+      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, label } : p)),
+    });
+  };
+
+  const handleDownloadExport = async () => {
+    setExportAnchor(null);
+    try {
+      const blob = await exportProject(selectedProject);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedProject}_annotations.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleRunExportPipeline = () => {
+    setExportAnchor(null);
+    // TODO: implement export pipeline
+    // e.g. await fetch(`${BASE}/projects/${project}/run-export-pipeline`, { method: 'POST' })
+  };
+
+  const handleRunJunctionDetection = async () => {
+    setAnnotations((prev) => ({ ...prev, junction_detection_pipeline_status: PipelineStatus.Running }));
+    try {
+      await runJunctionDetection(selectedProject);
+    } catch (e) {
+      setError(String(e));
+      loadSelectedProject();
+    }
+  };
+
+  // keyboard shortcuts
+  // ====================
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key === "ArrowRight") setImageIdx((i) => Math.min(images.length - 1, i + 1));
+      if (e.key === "ArrowLeft") setImageIdx((i) => Math.max(0, i - 1));
+      if ((e.key === "p" || e.key === "P") && !e.ctrlKey) toggleImageProcessed();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [images.length, toggleImageProcessed]);
+
+  // render
+  // ====================
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+        {/* ── Left drawer ─────────────────────────────────────────────────── */}
+        <Drawer
+          variant="permanent"
+          sx={{
+            width: DRAWER_WIDTH,
+            flexShrink: 0,
+            "& .MuiDrawer-paper": {
+              width: DRAWER_WIDTH,
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            },
+          }}
+        >
+          <Toolbar variant="dense" sx={{ height: 48, minHeight: 48, borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="h6" noWrap fontWeight={700}>
+              DNA Fork Annotator
+            </Typography>
+          </Toolbar>
+
+          {/* Project selector */}
+          <Box sx={{ p: 1.5 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Project</InputLabel>
+              <Select value={selectedProject} label="Project" onChange={(e) => setSelectedProject(e.target.value)}>
+                {projects.map((p) => (
+                  <MenuItem key={p} value={p}>
+                    {p}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+          <Divider />
+
+          {/* Image list */}
+          <Box sx={{ px: 1.5, pt: 1, display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="subtitle2">Images</Typography>
+            <Chip label={`${processedCount}/${images.length}`} size="small" color="primary" />
+          </Box>
+          <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
+            {images.map((img, idx) => (
+              <ListItemButton
+                key={img.name}
+                selected={idx === imageIdx}
+                onClick={() => {
+                  setImageIdx(idx);
+                  setSelectedPointId(null);
+                }}
+                sx={{ py: 0.25 }}
+                disabled={!!error || pipelineStatus !== PipelineStatus.Done}
+              >
+                <ListItemIcon sx={{ minWidth: 28 }}>
+                  {img.processed ? (
+                    <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
+                  ) : (
+                    <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} color="disabled" />
+                  )}
+                </ListItemIcon>
+                <ListItemText
+                  primary={img.name}
+                  primaryTypographyProps={{ variant: "body2", noWrap: true, fontSize: 12 }}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+          <Divider />
+        </Drawer>
+
+        {/* ── Main content ────────────────────────────────────────────────── */}
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+          {/* Toolbar */}
+          <Toolbar
+            variant="dense"
+            sx={{ height: 48, minHeight: 48, borderBottom: 1, borderColor: "divider", gap: 1, flexShrink: 0 }}
+          >
+            <Tooltip title="Previous (←)">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setImageIdx((i) => Math.max(0, i - 1))}
+                  disabled={!!error || imageIdx === 0 || pipelineStatus !== PipelineStatus.Done}
+                >
+                  <NavigateBefore />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Typography variant="body2" noWrap sx={{ flex: 1, fontFamily: "monospace" }}>
+              {selectedProject === "" || currentImageName == null || pipelineStatus !== PipelineStatus.Done
+                ? ""
+                : currentImageName.replace(".png", "")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+              {images.length > 0 && pipelineStatus === PipelineStatus.Done ? `${imageIdx + 1} / ${images.length}` : ""}
+            </Typography>
+
+            <Tooltip title="Next (→)">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setImageIdx((i) => Math.min(images.length - 1, i + 1))}
+                  disabled={!!error || imageIdx >= images.length - 1 || pipelineStatus !== PipelineStatus.Done}
+                >
+                  <NavigateNext />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Tooltip title="Toggle processed (P)">
+              <Button
+                size="small"
+                variant={currentAnnotations.processed ? "contained" : "outlined"}
+                color="success"
+                startIcon={<TaskAltIcon sx={{ fontSize: 16 }} />}
+                onClick={toggleImageProcessed}
+                sx={{ textTransform: "none", fontSize: 12, minWidth: 130 }}
+                disabled={!!error || !currentImageName || pipelineStatus !== PipelineStatus.Done}
+              >
+                {currentAnnotations.processed ? "Processed ✓" : "Mark processed"}
+              </Button>
+            </Tooltip>
+
+            <ButtonGroup
+              size="small"
+              variant="outlined"
+              disabled={!!error || !selectedProject || pipelineStatus !== PipelineStatus.Done}
+            >
+              <Button
+                startIcon={<FileDownloadIcon sx={{ fontSize: 16 }} />}
+                onClick={handleDownloadExport}
+                sx={{ textTransform: "none", fontSize: 12 }}
+              >
+                Export
+              </Button>
+              <Button sx={{ px: 0.5 }} onClick={(e) => setExportAnchor(e.currentTarget)}>
+                <ArrowDropDownIcon fontSize="small" />
+              </Button>
+            </ButtonGroup>
+            <Menu
+              anchorEl={exportAnchor}
+              open={Boolean(exportAnchor)}
+              onClose={() => setExportAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <MenuItem dense onClick={handleDownloadExport}>
+                <ListItemIcon>
+                  <FileDownloadIcon fontSize="small" />
+                </ListItemIcon>
+                Download JSON
+              </MenuItem>
+              <MenuItem dense onClick={handleRunExportPipeline}>
+                <ListItemIcon>
+                  <PlayArrowIcon fontSize="small" />
+                </ListItemIcon>
+                Run export pipeline
+              </MenuItem>
+            </Menu>
+
+            <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              <IconButton size="small" onClick={toggleMode}>
+                {mode === "dark" ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Toolbar>
+
+          {/* Annotator + right panel */}
+          <Box sx={{ flex: 1, display: "flex", overflow: "hidden" }}>
+            {/* Centre: annotator or junction-detection gate */}
+            <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              {error && (
+                <Alert severity="error" onClose={() => setError(null)} sx={{ m: 1, flexShrink: 0 }}>
+                  {error}
+                </Alert>
+              )}
+              <Box sx={{ flex: 1, overflow: "hidden", position: "relative" }}>
+                {loading && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: 1,
+                    }}
+                  >
+                    <CircularProgress />
+                  </Box>
+                )}
+
+                {!loading && !error && selectedProject && pipelineStatus !== PipelineStatus.Done && (
+                  <Box
+                    sx={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 2,
+                      p: 4,
+                    }}
+                  >
+                    {pipelineStatus === PipelineStatus.Idle && (
+                      <React.Fragment>
+                        <Typography variant="h6" color="text.secondary">
+                          Fork detection not yet run
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          Run the automatic fork detection pipeline before reviewing images.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          size="large"
+                          startIcon={<PlayArrowIcon />}
+                          onClick={handleRunJunctionDetection}
+                        >
+                          Run fork detection
+                        </Button>
+                      </React.Fragment>
+                    )}
+                    {pipelineStatus === PipelineStatus.Running && (
+                      <React.Fragment>
+                        <CircularProgress />
+                        <Typography variant="h6" color="text.secondary">
+                          Automatic fork detection is running…
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          Reload this project once the pipeline completes.
+                        </Typography>
+                      </React.Fragment>
+                    )}
+                    {pipelineStatus === PipelineStatus.Failed && (
+                      <React.Fragment>
+                        <Typography variant="h6" color="error">
+                          Fork detection failed
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          The automatic fork detection pipeline encountered an error. Check the logs and try again.
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          size="large"
+                          color="error"
+                          startIcon={<PlayArrowIcon />}
+                          onClick={handleRunJunctionDetection}
+                        >
+                          Re-run fork detection
+                        </Button>
+                      </React.Fragment>
+                    )}
+                  </Box>
+                )}
+
+                {!loading && pipelineStatus === PipelineStatus.Done && currentImageName && (
+                  <ImageAnnotator
+                    project={selectedProject}
+                    imageName={currentImageName}
+                    annotations={currentAnnotations}
+                    onAnnotationsChange={handleAnnotationsChange}
+                    selectedLabel={LABELS[0]}
+                    selectedPointId={selectedPointId}
+                    onSelectPoint={setSelectedPointId}
+                  />
+                )}
+              </Box>
+            </Box>
+
+            {/* Right panel: annotation list */}
+            <Box
+              sx={{
+                width: 260,
+                flexShrink: 0,
+                borderLeft: 1,
+                borderColor: "divider",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                opacity: !!error || pipelineStatus !== PipelineStatus.Done ? 0.4 : 1,
+                pointerEvents: !!error || pipelineStatus !== PipelineStatus.Done ? "none" : "auto",
+              }}
+            >
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 1,
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <Typography variant="subtitle2">Annotations</Typography>
+                <Chip label={currentAnnotations.points.length} size="small" />
+              </Box>
+
+              <List dense disablePadding sx={{ flex: 1, overflowY: "auto" }}>
+                {currentAnnotations.points.map((p, i) => (
+                  <ListItem
+                    key={p.id}
+                    disablePadding
+                    secondaryAction={
+                      <IconButton edge="end" size="small" onClick={() => deletePoint(p.id)} tabIndex={-1}>
+                        <DeleteIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemButton
+                      selected={p.id === selectedPointId}
+                      onClick={() => setSelectedPointId((prev) => (prev === p.id ? null : p.id))}
+                      sx={{ py: 0.25, pl: 1, pr: 4 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 22 }}>
+                        <Box
+                          sx={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            bgcolor: labelColor(p.label),
+                            flexShrink: 0,
+                          }}
+                        />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${i + 1}. ${p.label}`}
+                        secondary={`${Math.round(p.x)}, ${Math.round(p.y)}`}
+                        primaryTypographyProps={{ variant: "body2", fontSize: 12 }}
+                        secondaryTypographyProps={{ variant: "caption", fontFamily: "monospace", fontSize: 10 }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </List>
+
+              {/* Selected point: change label */}
+              {selectedPoint && (
+                <React.Fragment>
+                  <Divider />
+                  <Box sx={{ p: 1.5 }}>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.75 }}>
+                      Selected point label:
+                    </Typography>
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                      {LABELS.map((l) => (
+                        <Button
+                          key={l}
+                          size="small"
+                          variant={l === selectedPoint.label ? "contained" : "outlined"}
+                          onClick={() => changePointJunctionType(selectedPoint.id, l)}
+                          sx={{
+                            textTransform: "none",
+                            justifyContent: "flex-start",
+                            fontSize: 12,
+                            bgcolor: l === selectedPoint.label ? labelColor(l) : undefined,
+                            borderColor: labelColor(l),
+                            color: l === selectedPoint.label ? "#fff" : labelColor(l),
+                            "&:hover": { bgcolor: labelColor(l), color: "#fff" },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              bgcolor: l === selectedPoint.label ? "#fff" : labelColor(l),
+                              mr: 1,
+                              flexShrink: 0,
+                            }}
+                          />
+                          {l}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Box>
+                </React.Fragment>
+              )}
+
+              <Divider />
+              <Box sx={{ p: 1.5 }}>
+                <Typography variant="caption" color="text.secondary" lineHeight={1.6}>
+                  <b>Click</b> image: add point
+                  <br />
+                  <b>Click / drag point</b>: select / move
+                  <br />
+                  <b>Drag</b>: pan &nbsp;|&nbsp; <b>Scroll</b>: zoom
+                  <br />
+                  <b>←/→</b>: navigate &nbsp;|&nbsp; <b>P</b>: set processed
+                  <br />
+                  <b>D / Delete</b>: delete selected point
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+};
+
+export default App;

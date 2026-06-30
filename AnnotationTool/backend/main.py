@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from pathlib import Path
 import json
 
@@ -22,6 +23,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# models
+# ====================
+
+
+class Point(BaseModel):
+    id: str
+    x: int
+    y: int
+    label: str
+
+
+class ImageAnnotations(BaseModel):
+    processed: bool
+    points: list[Point]
+
+
+class PipelineStatus(str, Enum):
+    Idle = "Idle"
+    Running = "Running"
+    Done = "Done"
+    Failed = "Failed"
+
 
 # helpers
 # ====================
@@ -40,28 +63,13 @@ def annotations_file_path(project_dir: Path) -> Path:
 def load_annotations(project_dir: Path) -> dict:
     p = annotations_file_path(project_dir)
     if not p.exists():
-        return {"junction_detection_done": False, "images": {}}
+        return {"junction_detection_pipeline_status": PipelineStatus.Idle, "images": {}}
     return json.loads(p.read_text(encoding="utf-8"))
 
 
 def save_annotations(pd: Path, data: dict) -> None:
     annotations_file_path(pd).write_text(json.dumps(
         data, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-# models
-# ====================
-
-class Point(BaseModel):
-    id: str
-    x: int
-    y: int
-    label: str
-
-
-class ImageAnnotations(BaseModel):
-    processed: bool
-    points: list[Point]
 
 
 # routes
@@ -101,13 +109,12 @@ def get_annotations(project: str) -> dict:
     return load_annotations(project_dir(project))
 
 
-@app.put("/projects/{project}/annotations/{image_name}")
+@app.put("/projects/{project}/annotations/{image_name}", status_code=204)
 def save_image_annotations(project: str, image_name: str, data: ImageAnnotations):
     pd = project_dir(project)
     ann = load_annotations(pd)
     ann["images"][image_name] = data.model_dump()
     save_annotations(pd, ann)
-    return {"ok": True}
 
 
 @app.post("/projects/{project}/export")
@@ -124,6 +131,5 @@ def export_project(project: str):
 
 @app.post("/projects/{project}/run-junction-detection")
 def run_junction_detection(project: str):
-    project_dir(project)  # validates project exists
-    # TODO: start ML pipeline (e.g. submit SLURM job, spawn subprocess, etc.)
-    return {"status": "started", "project": project}
+    # TODO: start ML pipeline, update pipeline status
+    return {"status": PipelineStatus.Running, "project": project}
