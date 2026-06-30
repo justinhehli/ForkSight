@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getImageUrl } from "../api";
 import { JunctionType } from "../types";
 import type { ImageAnnotations, Point } from "../types";
+import React from "react";
 
 const LABEL_COLORS: Record<JunctionType, string> = {
   [JunctionType.ReplicationFork]: "#4caf50",
@@ -109,6 +110,7 @@ const ImageAnnotator = ({
     pointId: string | null;
   }>({ mode: "none", moved: false, sx: 0, sy: 0, spx: 0, spy: 0, pointId: null });
   const [cursor, setCursor] = useState<string>("crosshair");
+  const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
 
   const hitPoint = (clientX: number, clientY: number) => {
     const container = containerRef.current;
@@ -150,7 +152,10 @@ const ImageAnnotator = ({
     }
     const dx = e.clientX - drag.current.sx;
     const dy = e.clientY - drag.current.sy;
-    if (!drag.current.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) drag.current.moved = true;
+    if (!drag.current.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      drag.current.moved = true;
+      if (drag.current.mode === "point") setDraggingPointId(drag.current.pointId);
+    }
     if (!drag.current.moved) return;
 
     if (mode === "pan") {
@@ -174,10 +179,11 @@ const ImageAnnotator = ({
   const onMouseUp = useCallback((e: React.MouseEvent) => {
     const { mode, moved, pointId } = drag.current;
     drag.current.mode = "none";
+    setDraggingPointId(null);
     setCursor(hitPoint(e.clientX, e.clientY) ? "grab" : "crosshair");
 
     if (mode === "point") {
-      if (!moved) onSelectRef.current(pointId); // bare click on point → select
+      onSelectRef.current(pointId);
       return;
     }
 
@@ -256,6 +262,7 @@ const ImageAnnotator = ({
       onMouseUp={onMouseUp}
       onMouseLeave={() => {
         drag.current.mode = "none";
+        setDraggingPointId(null);
         setCursor("crosshair");
       }}
     >
@@ -293,28 +300,32 @@ const ImageAnnotator = ({
         {annotations.points.map((p) => {
           const cx = p.x * zoom + panX;
           const cy = p.y * zoom + panY;
-          const selected = p.id === selectedPointId;
+          const selected = p.id === selectedPointId && p.id !== draggingPointId;
           const color = labelColor(p.label);
           return (
             <g key={p.id}>
               {/* outer ring when selected */}
-              {selected && <circle cx={cx} cy={cy} r={13} fill="none" stroke="#fff" strokeWidth={2} />}
               <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
-              <text
-                x={cx}
-                y={cy - 11}
-                fontSize={11}
-                fontFamily="sans-serif"
-                fontWeight={600}
-                fill="#fff"
-                stroke="#000"
-                strokeWidth={2.5}
-                paintOrder="stroke"
-                textAnchor="middle"
-                style={{ pointerEvents: "none", userSelect: "none" }}
-              >
-                {p.label}
-              </text>
+              {selected && (
+                <React.Fragment>
+                  <circle cx={cx} cy={cy} r={13} fill="none" stroke="#fff" strokeWidth={2} />
+                  <text
+                    x={cx}
+                    y={cy - 11}
+                    fontSize={11}
+                    fontFamily="sans-serif"
+                    fontWeight={600}
+                    fill="#fff"
+                    stroke="#000"
+                    strokeWidth={2.5}
+                    paintOrder="stroke"
+                    textAnchor="middle"
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
+                    {p.label}
+                  </text>
+                </React.Fragment>
+              )}
             </g>
           );
         })}

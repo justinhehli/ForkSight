@@ -620,7 +620,7 @@ const App = () => {
                             bgcolor: l === selectedPoint.label ? labelColor(l) : undefined,
                             borderColor: labelColor(l),
                             color: l === selectedPoint.label ? "#fff" : labelColor(l),
-                            "&:hover": { bgcolor: labelColor(l), color: "#fff" },
+                            "&:hover": { bgcolor: labelColor(l), borderColor: labelColor(l), color: "#fff" },
                           }}
                         >
                           <Box
