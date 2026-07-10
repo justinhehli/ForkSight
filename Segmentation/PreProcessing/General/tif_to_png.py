@@ -4,13 +4,7 @@ from PIL import Image
 import numpy as np
 from typing import Optional, Tuple
 
-from Environment.env_utils import load_forksight_env
-from Segmentation.PreProcessing.General.preprocessing_util import init_dir
-
-load_forksight_env()
-
-RAW_DATA_DIR = os.getenv("RAW_DATA_DIR")
-HIGHRES_IMG_DIR_NAME = os.getenv("HIGHRES_IMG_DIR_NAME", "images_4096")
+FULL_IMAGE_SIZE = (4096, 4096)
 
 IN_IMAGES = [
     ("Z:\\imcrdata\\2024_Andrea_ETP_R2\\20240911_Andrea_Black\\LayersData\\highmag\\Tile Set (14)\\Tile_007-004-000000_0-000.tif", None),
@@ -59,27 +53,6 @@ IN_IMAGES = [
 ]
 
 
-def get_exp_dir_name(img_path: Path) -> str:
-    parts = img_path.parts
-    idx = parts.index("LayersData")
-    return parts[idx - 1].lower()
-
-
-def get_tileset_tile_name(img_path: Path) -> str:
-    tileset = img_path.parent.name
-    tileset = tileset.replace("Tile Set ", "tileset_").replace(
-        " ", "_").replace("(", "").replace(")", "")
-    tile = img_path.stem.replace("-000000_0-000", "").replace("-", "_")
-    return f"{tileset}_{tile}".lower()
-
-
-def get_new_name(img_path: Path, suffix: str = None) -> str:
-    suffix = f'_{suffix}' if suffix else ''
-    exp_dir_name = get_exp_dir_name(img_path)
-    tileset_tile_name = get_tileset_tile_name(img_path)
-    return f"{exp_dir_name}_{tileset_tile_name}{suffix}.png"
-
-
 def save_image_as_png(img: Image.Image, out_dir: Path, out_name: str, resize: tuple = None):
     if resize is not None:
         img = img.resize(resize, Image.Resampling.BILINEAR)
@@ -110,11 +83,25 @@ def normalize_convert_uint8(img: Image.Image, soi_coords: Optional[Tuple[int, in
     return out_img
 
 
+def convert_tif_to_png(tif_path: Path) -> Image.Image:
+    img = Image.open(tif_path)
+    img = normalize_convert_uint8(img)
+    return img.resize(FULL_IMAGE_SIZE, Image.Resampling.BILINEAR)
+
+
 def main():
-    if RAW_DATA_DIR is None:
+    from Environment.env_utils import load_forksight_env
+    from Segmentation.PreProcessing.General.preprocessing_util import init_dir
+    from Segmentation.PreProcessing.General.tile_naming_util import get_new_name
+
+    load_forksight_env()
+    raw_data_dir = os.getenv("RAW_DATA_DIR")
+    highres_img_dir_name = os.getenv("HIGHRES_IMG_DIR_NAME", "images_4096")
+
+    if raw_data_dir is None:
         raise RuntimeError("RAW_DATA_DIR environment variable not set")
 
-    out_dir_path = Path(RAW_DATA_DIR) / HIGHRES_IMG_DIR_NAME
+    out_dir_path = Path(raw_data_dir) / highres_img_dir_name
     init_dir(out_dir_path)
 
     total_images = 0
@@ -129,8 +116,9 @@ def main():
             is_soi_img = soi_coords is not None
             new_name = get_new_name(
                 img_path, "soi" if is_soi_img else None)
-            save_image_as_png(img, out_dir_path, new_name, resize=(
-                4096, 4096) if not is_soi_img else None)  # ensure all full images are same size (some are 4000x400)
+            # ensure all full images are same size (some are 4000x400)
+            save_image_as_png(img, out_dir_path, new_name,
+                              resize=FULL_IMAGE_SIZE if not is_soi_img else None)
 
             print(f"{new_name}")
             total_images += 1

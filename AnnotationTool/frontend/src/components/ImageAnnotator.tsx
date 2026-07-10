@@ -23,6 +23,7 @@ interface View {
 
 interface Props {
   project: string;
+  imageId: string;
   imageName: string;
   annotations: ImageAnnotations;
   onAnnotationsChange: (a: ImageAnnotations) => void;
@@ -33,6 +34,7 @@ interface Props {
 
 const ImageAnnotator = ({
   project,
+  imageId,
   imageName,
   annotations,
   onAnnotationsChange,
@@ -226,7 +228,7 @@ const ImageAnnotator = ({
   // reset when image changes
   useEffect(() => {
     fitToContainer();
-  }, [imageName, fitToContainer]);
+  }, [imageId, fitToContainer]);
 
   // delete selected point with Delete key
   useEffect(() => {
@@ -269,8 +271,8 @@ const ImageAnnotator = ({
       {/* Image */}
       <img
         ref={imgRef}
-        key={imageName}
-        src={getImageUrl(project, imageName)}
+        key={imageId}
+        src={getImageUrl(project, imageId)}
         onLoad={onImageLoad}
         draggable={false}
         alt={imageName}

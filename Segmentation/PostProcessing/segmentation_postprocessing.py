@@ -3,16 +3,23 @@ import numpy as np
 import torch.nn.functional as F
 from scipy.ndimage import label, generate_binary_structure
 
-from Environment.env_utils import load_as, load_as_bool, load_forksight_env
+from Environment.env_utils import load_as, load_as_bool, load_shared_env
 
-load_forksight_env()
+# Read env lazily inside functions rather than as module-level constants to
+# avoid issues, and load shared.env here defensively to guarantee they're loaded
+load_shared_env()
 
-POSTPROCESSING_MIN_OBJ_SIZE = load_as("POSTPROCESSING_MIN_OBJ_SIZE", int, 100)
-POSTPROCESSING_CONNECT_DIAGONALLY = load_as_bool(
-    "POSTPROCESSING_CONNECT_DIAGONALLY", True)
-# Components whose bounding box width AND height are both below this threshold are excluded from junction detection
-POSTPROCESSING_SMALL_BBOX_THRESHOLD = load_as(
-    "POSTPROCESSING_SMALL_BBOX_THRESHOLD", int, None)
+
+def _min_obj_size() -> int | None:
+    return load_as("POSTPROCESSING_MIN_OBJ_SIZE", int, 100)
+
+
+def _connect_diagonally() -> bool:
+    return load_as_bool("POSTPROCESSING_CONNECT_DIAGONALLY", True)
+
+
+def _small_bbox_threshold() -> int | None:
+    return load_as("POSTPROCESSING_SMALL_BBOX_THRESHOLD", int, None)
 
 
 def get_connected_components(mask: torch.Tensor) -> tuple[np.ndarray, int]:
@@ -23,7 +30,7 @@ def get_connected_components(mask: torch.Tensor) -> tuple[np.ndarray, int]:
     mask = (mask[0] > 0).cpu().numpy()
 
     binary_structure = None
-    if POSTPROCESSING_CONNECT_DIAGONALLY:
+    if _connect_diagonally():
         binary_structure = generate_binary_structure(2, 2)
 
     return label(mask, structure=binary_structure)
@@ -40,6 +47,7 @@ def remove_small_objects_from_batch(masks: torch.Tensor) -> torch.Tensor:
 
     B = masks.shape[0]
     output = torch.zeros_like(masks)
+    min_obj_size = _min_obj_size()
 
     for b in range(B):
         labeled_mask, num_components = get_connected_components(masks[b])
@@ -48,7 +56,7 @@ def remove_small_objects_from_batch(masks: torch.Tensor) -> torch.Tensor:
         for component_idx in range(1, num_components + 1):
             ys, xs = np.where(labeled_mask == component_idx)
 
-            if POSTPROCESSING_MIN_OBJ_SIZE is not None and ys.size < POSTPROCESSING_MIN_OBJ_SIZE:
+            if min_obj_size is not None and ys.size < min_obj_size:
                 continue
 
             cleaned_mask[ys, xs] = 1
@@ -122,7 +130,8 @@ def remove_small_bbox_objects(mask: torch.Tensor) -> torch.Tensor:
     '''
     assert mask.ndim == 3 and mask.shape[0] == 1, "Expected mask shape [1, H, W]"
 
-    if POSTPROCESSING_SMALL_BBOX_THRESHOLD is None:
+    small_bbox_threshold = _small_bbox_threshold()
+    if small_bbox_threshold is None:
         return mask
 
     labeled_mask, num_components = get_connected_components(mask)
@@ -132,7 +141,7 @@ def remove_small_bbox_objects(mask: torch.Tensor) -> torch.Tensor:
         ys, xs = np.where(labeled_mask == component_idx)
         w = int(xs.max()) - int(xs.min()) + 1
         h = int(ys.max()) - int(ys.min()) + 1
-        if w < POSTPROCESSING_SMALL_BBOX_THRESHOLD and h < POSTPROCESSING_SMALL_BBOX_THRESHOLD:
+        if w < small_bbox_threshold and h < small_bbox_threshold:
             continue
         cleaned[ys, xs] = 1
 

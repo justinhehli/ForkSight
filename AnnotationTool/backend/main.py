@@ -1,18 +1,48 @@
+import io
+import json
 import os
+import subprocess
+import sys
+import threading
 from enum import Enum
 from pathlib import Path
-import json
+
+
+def _find_repo_root() -> Path:
+    start = Path(__file__).resolve()
+    for parent in [start] + list(start.parents):
+        if (parent / ".git").exists():
+            return parent
+    raise RuntimeError("No repo root ('.git' folder) found")
+
+
+REPO_ROOT = _find_repo_root()
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 
-load_dotenv(Path(__file__).parent.parent / ".env")
-DATA_DIR = Path(os.environ["DATA_DIR"])
+from AnnotationTool.backend.pipeline.discovery import (
+    list_candidate_dirs,
+    load_registered_projects,
+    save_registered_projects,
+)
+from AnnotationTool.backend.pipeline.annotations_store import (
+    PipelineStatus,
+    load_annotations,
+    pipeline_log_path,
+    save_annotations,
+)
+from AnnotationTool.backend.pipeline.process_util import is_pid_running
+from AnnotationTool.backend.util import get_repo_root
+from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+load_dotenv(get_repo_root() / "AnnotationTool" / ".annotation_tool_env")
+PROJECTS_PARENT_DIR = Path(os.environ["PROJECTS_PARENT_DIR"])
 
 app = FastAPI(title="ForkSight Annotator API")
 
@@ -32,13 +62,6 @@ class JunctionType(str, Enum):
     ReversedFork = "Reversed Fork"
 
 
-class PipelineStatus(str, Enum):
-    Idle = "Idle"
-    Running = "Running"
-    Done = "Done"
-    Failed = "Failed"
-
-
 class Point(BaseModel):
     id: str
     x: int
@@ -51,78 +74,114 @@ class ImageAnnotations(BaseModel):
     points: list[Point]
 
 
+class ProjectSelection(BaseModel):
+    names: list[str]
+
+
+# concurrency
+# ====================
+# One pipeline may run at a time globally, as determined from annotations.json
+# This lock only makes the check-then-set sequence atomic within this backend process
+_pipeline_start_lock = threading.Lock()
+
+# Per-project locks guard read-modify-write of annotations.json.
+_project_locks: dict[str, threading.Lock] = {}
+_project_locks_guard = threading.Lock()
+
+
+def _get_project_lock(project: str) -> threading.Lock:
+    with _project_locks_guard:
+        if project not in _project_locks:
+            _project_locks[project] = threading.Lock()
+        return _project_locks[project]
+
+
 # helpers
 # ====================
 
 def project_dir(project: str) -> Path:
-    p = DATA_DIR / project
-    if not p.is_dir():
+    p = PROJECTS_PARENT_DIR / project
+    registered = load_registered_projects(PROJECTS_PARENT_DIR)
+    if project not in registered or not p.is_dir():
         raise HTTPException(404, f"Project '{project}' not found")
     return p
-
-
-def annotations_file_path(project_dir: Path) -> Path:
-    return project_dir / "annotations.json"
-
-
-def load_annotations(project_dir: Path) -> dict:
-    p = annotations_file_path(project_dir)
-    if not p.exists():
-        return {"junction_detection_pipeline_status": PipelineStatus.Idle, "images": {}}
-    return json.loads(p.read_text(encoding="utf-8"))
-
-
-def save_annotations(pd: Path, data: dict) -> None:
-    annotations_file_path(pd).write_text(json.dumps(
-        data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # routes
 # ====================
 
+
 @app.get("/projects")
 def list_projects() -> list[str]:
-    if not DATA_DIR.exists():
-        raise HTTPException(500, f"DATA_DIR does not exist: {DATA_DIR}")
-    return sorted(p.name for p in DATA_DIR.iterdir() if p.is_dir())
+    if not PROJECTS_PARENT_DIR.exists():
+        raise HTTPException(
+            500, f"PROJECTS_PARENT_DIR does not exist: {PROJECTS_PARENT_DIR}")
+    registered = load_registered_projects(PROJECTS_PARENT_DIR)
+    return sorted(name for name in registered if (PROJECTS_PARENT_DIR / name).is_dir())
 
 
-@app.get("/projects/{project}/images")
+@app.get("/project-candidates")
+def get_project_candidates() -> list[dict]:
+    if not PROJECTS_PARENT_DIR.exists():
+        raise HTTPException(
+            500, f"PROJECTS_PARENT_DIR does not exist: {PROJECTS_PARENT_DIR}")
+    return list_candidate_dirs(PROJECTS_PARENT_DIR)
+
+
+@app.post("/project-candidates")
+def set_project_candidates(selection: ProjectSelection) -> list[dict]:
+    save_registered_projects(PROJECTS_PARENT_DIR, selection.names)
+    return list_candidate_dirs(PROJECTS_PARENT_DIR)
+
+
+@app.get("/projects/{project:path}/images")
 def list_images(project: str):
     pd = project_dir(project)
-    annotations = load_annotations(pd)
-    image_names = sorted(f.name for f in pd.iterdir()
-                         if f.suffix.lower() in IMAGE_EXTS)
-    return [
-        {"name": n, "processed": annotations["images"].get(
-            n, {}).get("processed", False)}
-        for n in image_names
+    ann = load_annotations(pd)
+    images = [
+        {"id": image_id, "name": img["display_name"],
+            "processed": img.get("processed", False)}
+        for image_id, img in ann["images"].items()
     ]
+    images.sort(key=lambda i: i["name"])
+    return images
 
 
-@app.get("/projects/{project}/images/{image_name}")
-def serve_image(project: str, image_name: str):
+@app.get("/projects/{project:path}/images/{image_id}")
+def serve_image(project: str, image_id: str):
     pd = project_dir(project)
-    p = pd / image_name
-    if not p.exists() or p.suffix.lower() not in IMAGE_EXTS:
+    ann = load_annotations(pd)
+    img_ann = ann["images"].get(image_id)
+    if img_ann is None:
         raise HTTPException(404, "Image not found")
-    return FileResponse(str(p))
+
+    tif_path = pd / img_ann["source_tif"]
+    if not tif_path.exists():
+        raise HTTPException(404, "Source TIF not found")
+
+    png = convert_tif_to_png(tif_path)
+    buf = io.BytesIO()
+    png.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
-@app.get("/projects/{project}/annotations")
+@app.get("/projects/{project:path}/annotations")
 def get_annotations(project: str) -> dict:
     return load_annotations(project_dir(project))
 
 
-@app.put("/projects/{project}/annotations/{image_name}", status_code=204)
-def save_image_annotations(project: str, image_name: str, data: ImageAnnotations):
+@app.put("/projects/{project:path}/annotations/{image_id}", status_code=204)
+def save_image_annotations(project: str, image_id: str, data: ImageAnnotations):
     pd = project_dir(project)
-    ann = load_annotations(pd)
-    ann["images"][image_name] = data.model_dump()
-    save_annotations(pd, ann)
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        if image_id not in ann["images"]:
+            raise HTTPException(404, f"Image '{image_id}' not found")
+        ann["images"][image_id].update(data.model_dump())
+        save_annotations(pd, ann)
 
 
-@app.post("/projects/{project}/export")
+@app.post("/projects/{project:path}/export")
 def export_project(project: str):
     ann = load_annotations(project_dir(project))
     images = ann["images"]
@@ -148,15 +207,87 @@ def export_project(project: str):
     }
 
     content = json.dumps(export_data, indent=2, ensure_ascii=False)
+    safe_name = project.replace("/", "_")
     return Response(
         content=content,
         media_type="application/json",
         headers={
-            "Content-Disposition": f'attachment; filename="{project}_annotations.json"'},
+            "Content-Disposition": f'attachment; filename="{safe_name}_annotations.json"'},
     )
 
 
-@app.post("/projects/{project}/run-junction-detection")
+@app.get("/projects/{project:path}/pipeline-log")
+def get_pipeline_log(project: str):
+    pd = project_dir(project)
+    log_path = pipeline_log_path(pd)
+    if not log_path.is_file():
+        return Response(content="", media_type="text/plain")
+    return Response(content=log_path.read_text(encoding="utf-8", errors="replace"),
+                    media_type="text/plain")
+
+
+def _find_running_pipeline() -> str | None:
+    """Return the name of a project with an active pipeline, if any.
+    Projects stuck at "Running" whose recorded pipeline_runner.py process is 
+    no longer alive is set to "Failed" here so it doesn't block new runs.
+    """
+    for name in sorted(load_registered_projects(PROJECTS_PARENT_DIR)):
+        pd = PROJECTS_PARENT_DIR / name
+        if not pd.is_dir():
+            continue
+        ann = load_annotations(pd)
+        if ann.get("junction_detection_pipeline_status") != PipelineStatus.Running:
+            continue
+        if is_pid_running(ann.get("pipeline_pid")):
+            return name
+        with _get_project_lock(name):
+            ann = load_annotations(pd)
+            if ann.get("junction_detection_pipeline_status") == PipelineStatus.Running:
+                ann["junction_detection_pipeline_status"] = PipelineStatus.Failed
+                ann["pipeline_error"] = (
+                    "Pipeline process is no longer running "
+                    "(backend restarted or the process crashed)."
+                )
+                ann["pipeline_pid"] = None
+                save_annotations(pd, ann)
+    return None
+
+
+@app.post("/projects/{project:path}/run-junction-detection")
 def run_junction_detection(project: str):
-    # TODO: start ML pipeline, update pipeline status
+    pd = project_dir(project)
+
+    with _pipeline_start_lock:
+        running_project = _find_running_pipeline()
+        if running_project is not None:
+            raise HTTPException(
+                409, f"A junction detection pipeline is already running for project '{running_project}'")
+
+        # Spawn the pipeline as its own OS process, this request returns immediately
+        # and pipeline_runner.py itself updates annotations.json when it's done
+        log_path = pipeline_log_path(pd)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_file = open(log_path, "w", encoding="utf-8")
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "-u", "-m", "AnnotationTool.backend.pipeline.pipeline_runner",
+                 "--project-dir", str(pd)],
+                cwd=str(get_repo_root()),
+                env=env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+        finally:
+            # Popen duplicates the handle for the child; safe to close our copy.
+            log_file.close()
+
+        with _get_project_lock(project):
+            ann = load_annotations(pd)
+            ann["junction_detection_pipeline_status"] = PipelineStatus.Running
+            ann["pipeline_error"] = None
+            ann["pipeline_pid"] = proc.pid
+            save_annotations(pd, ann)
+
     return {"status": PipelineStatus.Running, "project": project}

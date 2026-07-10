@@ -25,7 +25,7 @@ from pathlib import Path
 import wandb
 
 from Environment.env_utils import load_forksight_env
-from Segmentation.Util.nnunet_wandb_util import nnunet_folder_name, nnunet_artifact_name, NNUNET_DEFAULT_FOLDS, NNUNET_DEFAULT_CHECKPOINT
+from Segmentation.Util.nnunet_util import nnunet_folder_name, nnunet_artifact_name, NNUNET_DEFAULT_FOLDS, NNUNET_DEFAULT_CHECKPOINT
 
 
 def main():

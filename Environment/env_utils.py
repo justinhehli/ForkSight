@@ -3,15 +3,17 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 
-def get_env_file() -> Path:
+def get_repo_root() -> Path:
     start = Path(__file__).resolve()
-    repo_root = None
     for parent in [start] + list(start.parents):
         if (parent / ".git").exists():
-            repo_root = parent
-            break
-    if repo_root is None:
-        raise RuntimeError("No repo root ('.git' folder) found")
+            return parent
+    raise RuntimeError("No repo root ('.git' folder) found")
+
+
+def get_dev_env_file() -> Path:
+    """Path of environment file used exclusively during development (model training, pipeline evaluation)"""
+    repo_root = get_repo_root()
     env_path = repo_root / "Environment" / ".env"
     if not env_path.exists():
         raise FileNotFoundError(
@@ -19,8 +21,23 @@ def get_env_file() -> Path:
     return env_path
 
 
+def get_shared_env_file() -> Path:
+    """Path of shared environment file used during development AND production"""
+    return get_repo_root() / "Environment" / "shared.env"
+
+
+def load_shared_env():
+    """env variables shared between development (training/evaluation) and 
+    the deployed annotation-tool pipeline """
+    env_path = get_shared_env_file()
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path, override=False)
+        print(f"loaded shared environment variables from: {env_path}")
+
+
 def load_forksight_env():
-    env_path = get_env_file()
+    load_shared_env()
+    env_path = get_dev_env_file()
     load_dotenv(dotenv_path=env_path, override=False)
     print(f"loaded environment variables from: {env_path}")
 

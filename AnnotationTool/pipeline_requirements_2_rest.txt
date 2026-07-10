@@ -1,0 +1,11 @@
+# Stage 2 of 2 for the annotation tool's pipeline venv 
+# Install AFTER pipeline_requirements_1_torch.txt
+
+numpy==2.3.5
+Pillow==12.0.0
+scipy==1.17.1
+scikit-image==0.26.0
+skan==0.13.1
+networkx==3.6.1
+python-dotenv==1.2.2
+nnunetv2==2.6.4

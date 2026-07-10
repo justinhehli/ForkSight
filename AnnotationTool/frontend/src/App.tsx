@@ -6,6 +6,7 @@ import {
   DarkMode as DarkModeIcon,
   Delete as DeleteIcon,
   FileDownload as FileDownloadIcon,
+  FolderShared as FolderSharedIcon,
   LightMode as LightModeIcon,
   NavigateBefore,
   NavigateNext,
@@ -47,11 +48,13 @@ import {
   exportProject,
   getAnnotations,
   getImages,
+  getPipelineLog,
   getProjects,
   runJunctionDetection,
   saveImageAnnotations,
 } from "./api";
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
+import ManageProjectsDialog from "./components/ManageProjectsDialog";
 import { JunctionType, PipelineStatus } from "./types";
 import type { ImageAnnotations, ImageMeta, ProjectAnnotations } from "./types";
 import React from "react";
@@ -86,14 +89,19 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
+  const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [logText, setLogText] = useState("");
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logContainerRef = useRef<HTMLPreElement | null>(null);
 
   // derived values
   // ====================
   const pipelineStatus = annotations.junction_detection_pipeline_status;
+  const currentImageId = images[imageIdx]?.id ?? "";
   const currentImageName = images[imageIdx]?.name ?? "";
-  const currentAnnotations: ImageAnnotations = annotations.images[currentImageName] ?? EMPTY_IMG_ANNOTATIONS;
+  const currentAnnotations: ImageAnnotations = annotations.images[currentImageId] ?? EMPTY_IMG_ANNOTATIONS;
   const processedCount = images.filter((i) => i.processed).length;
   const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
   const stats = useMemo(() => {
@@ -141,16 +149,16 @@ const App = () => {
   // auto-save
   // ====================
   const scheduleSave = useCallback(
-    (imageName: string, data: ImageAnnotations) => {
+    (imageId: string, data: ImageAnnotations) => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
 
       saveTimerRef.current = setTimeout(() => {
-        saveImageAnnotations(selectedProject, imageName, data).catch((e) => console.error("Save failed:", e));
+        saveImageAnnotations(selectedProject, imageId, data).catch((e) => console.error("Save failed:", e));
 
         // update image meta data (used in sidebar) processed label
-        setImages((prev) => prev.map((img) => (img.name === imageName ? { ...img, processed: data.processed } : img)));
+        setImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, processed: data.processed } : img)));
       }, 600);
     },
     [selectedProject],
@@ -162,10 +170,10 @@ const App = () => {
         ...updated,
         points: updated.points.map((p) => ({ ...p, x: Math.round(p.x), y: Math.round(p.y) })),
       };
-      setAnnotations((prev) => ({ ...prev, images: { ...prev.images, [currentImageName]: rounded } }));
-      scheduleSave(currentImageName, rounded);
+      setAnnotations((prev) => ({ ...prev, images: { ...prev.images, [currentImageId]: rounded } }));
+      scheduleSave(currentImageId, rounded);
     },
-    [currentImageName, scheduleSave],
+    [currentImageId, scheduleSave],
   );
 
   // actions
@@ -219,6 +227,35 @@ const App = () => {
     }
   };
 
+  const handleOpenLogDialog = async () => {
+    setLogDialogOpen(true);
+    try {
+      setLogText(await getPipelineLog(selectedProject));
+    } catch (e) {
+      setLogText(`Failed to load pipeline log: ${e}`);
+    }
+  };
+
+  // poll the pipeline log while the dialog is open and the pipeline is running
+  useEffect(() => {
+    if (!logDialogOpen || pipelineStatus !== PipelineStatus.Running) return;
+    const timer = setInterval(async () => {
+      try {
+        setLogText(await getPipelineLog(selectedProject));
+      } catch {
+        // keep showing the last successfully fetched log on transient errors
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [logDialogOpen, pipelineStatus, selectedProject]);
+
+  // auto-scroll the log view to the bottom as new content arrives
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logText]);
+
   // keyboard shortcuts
   // ====================
   useEffect(() => {
@@ -260,7 +297,7 @@ const App = () => {
           </Toolbar>
 
           {/* Project selector */}
-          <Box sx={{ p: 1.5 }}>
+          <Box sx={{ p: 1.5, display: "flex", gap: 1, alignItems: "flex-start" }}>
             <FormControl fullWidth size="small">
               <InputLabel>Project</InputLabel>
               <Select
@@ -282,6 +319,11 @@ const App = () => {
                 ))}
               </Select>
             </FormControl>
+            <Tooltip title="Manage projects">
+              <IconButton size="small" onClick={() => setManageProjectsOpen(true)}>
+                <FolderSharedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
           <Divider />
 
@@ -293,7 +335,7 @@ const App = () => {
           <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
             {images.map((img, idx) => (
               <ListItemButton
-                key={img.name}
+                key={img.id}
                 selected={idx === imageIdx}
                 onClick={() => {
                   setImageIdx(idx);
@@ -341,7 +383,7 @@ const App = () => {
             <Typography variant="body2" noWrap sx={{ flex: 1, fontFamily: "monospace" }}>
               {selectedProject === "" || currentImageName == null || pipelineStatus !== PipelineStatus.Done
                 ? ""
-                : currentImageName.replace(".png", "")}
+                : currentImageName}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
               {images.length > 0 && pipelineStatus === PipelineStatus.Done ? `${imageIdx + 1} / ${images.length}` : ""}
@@ -493,6 +535,9 @@ const App = () => {
                         <Typography variant="body2" color="text.secondary" textAlign="center">
                           Reload this project once the pipeline completes.
                         </Typography>
+                        <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
+                          View log
+                        </Button>
                       </React.Fragment>
                     )}
                     {pipelineStatus === PipelineStatus.Failed && (
@@ -501,25 +546,32 @@ const App = () => {
                           Fork detection failed
                         </Typography>
                         <Typography variant="body2" color="text.secondary" textAlign="center">
-                          The automatic fork detection pipeline encountered an error. Check the logs and try again.
+                          {annotations.pipeline_error ??
+                            "The automatic fork detection pipeline encountered an error. Check the logs and try again."}
                         </Typography>
-                        <Button
-                          variant="contained"
-                          size="large"
-                          color="error"
-                          startIcon={<PlayArrowIcon />}
-                          onClick={handleRunJunctionDetection}
-                        >
-                          Re-run fork detection
-                        </Button>
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
+                            View log
+                          </Button>
+                          <Button
+                            variant="contained"
+                            size="large"
+                            color="error"
+                            startIcon={<PlayArrowIcon />}
+                            onClick={handleRunJunctionDetection}
+                          >
+                            Re-run fork detection
+                          </Button>
+                        </Box>
                       </React.Fragment>
                     )}
                   </Box>
                 )}
 
-                {!loading && pipelineStatus === PipelineStatus.Done && currentImageName && (
+                {!loading && pipelineStatus === PipelineStatus.Done && currentImageId && (
                   <ImageAnnotator
                     project={selectedProject}
+                    imageId={currentImageId}
                     imageName={currentImageName}
                     annotations={currentAnnotations}
                     onAnnotationsChange={handleAnnotationsChange}
@@ -662,28 +714,89 @@ const App = () => {
       <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{selectedProject}</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 1.5, columnGap: 4, alignItems: "baseline", py: 1 }}>
-            <Typography variant="body2" color="text.secondary">Total images</Typography>
-            <Typography variant="body2" fontWeight={600} textAlign="right">{images.length}</Typography>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              rowGap: 1.5,
+              columnGap: 4,
+              alignItems: "baseline",
+              py: 1,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Total images
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {images.length}
+            </Typography>
 
-            <Typography variant="body2" color="text.secondary">Processed images</Typography>
-            <Typography variant="body2" fontWeight={600} textAlign="right">{processedCount}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Processed images
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {processedCount}
+            </Typography>
 
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
-            <Typography variant="body2" color="text.secondary">Replication forks</Typography>
-            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.replicationForks}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Replication forks
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {stats.replicationForks}
+            </Typography>
 
-            <Typography variant="body2" color="text.secondary">Reversed forks</Typography>
-            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.reversedForks}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Reversed forks
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {stats.reversedForks}
+            </Typography>
 
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
-            <Typography variant="body2" color="text.secondary">Replication / reversed ratio</Typography>
-            <Typography variant="body2" fontWeight={600} textAlign="right">{stats.ratio}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Replication / reversed ratio
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {stats.ratio}
+            </Typography>
           </Box>
         </DialogContent>
       </Dialog>
+      <Dialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Pipeline log{pipelineStatus === PipelineStatus.Running ? " (live)" : ""}</DialogTitle>
+        <DialogContent>
+          <Box
+            component="pre"
+            ref={logContainerRef}
+            sx={{
+              m: 0,
+              p: 1.5,
+              maxHeight: "60vh",
+              overflow: "auto",
+              bgcolor: mode === "dark" ? "grey.900" : "grey.100",
+              borderRadius: 1,
+              fontSize: 12,
+              fontFamily: "monospace",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {logText || "No log output yet."}
+          </Box>
+        </DialogContent>
+      </Dialog>
+      <ManageProjectsDialog
+        open={manageProjectsOpen}
+        onClose={() => setManageProjectsOpen(false)}
+        onSaved={() =>
+          getProjects()
+            .then(setProjects)
+            .catch((e) => setError(String(e)))
+        }
+      />
     </ThemeProvider>
   );
 };

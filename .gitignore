@@ -2,7 +2,11 @@ venv/
 annotation-tool-venv/
 node_modules/
 
-.env
+Environment/.env
+Environment/shared.env
+AnnotationTool/.annotation_tool_env
+AnnotationTool/.pipeline_env
+
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
@@ -12,7 +16,9 @@ wandb/
 
 Data/*
 JunctionDetection/Data/*
+
 *.png
 !AnnotationTool/frontend/public/favicon.png
+
 *.csv
 !persistencetest.csv

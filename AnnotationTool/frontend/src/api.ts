@@ -1,9 +1,11 @@
-import { ImageAnnotations, ImageMeta, ProjectAnnotations } from "./types";
+import { ImageAnnotations, ImageMeta, ProjectAnnotations, ProjectCandidate } from "./types";
 
 const BASE = "http://localhost:8000";
 
-export const getImageUrl = (project: string, image: string) =>
-  `${BASE}/projects/${encodeURIComponent(project)}/images/${encodeURIComponent(image)}`;
+const encodeProjectPath = (project: string) => project.split("/").map(encodeURIComponent).join("/");
+
+export const getImageUrl = (project: string, imageId: string) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}`;
 
 const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, init);
@@ -12,19 +14,19 @@ const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   }
 
   return response.json() as Promise<T>;
-}
+};
 
 export const getProjects = () => request<string[]>(`${BASE}/projects`);
 
 export const getImages = (project: string) =>
-  request<ImageMeta[]>(`${BASE}/projects/${encodeURIComponent(project)}/images`);
+  request<ImageMeta[]>(`${BASE}/projects/${encodeProjectPath(project)}/images`);
 
 export const getAnnotations = (project: string) =>
-  request<ProjectAnnotations>(`${BASE}/projects/${encodeURIComponent(project)}/annotations`);
+  request<ProjectAnnotations>(`${BASE}/projects/${encodeProjectPath(project)}/annotations`);
 
-export const saveImageAnnotations = async (project: string, image: string, data: ImageAnnotations): Promise<void> => {
+export const saveImageAnnotations = async (project: string, imageId: string, data: ImageAnnotations): Promise<void> => {
   const response = await fetch(
-    `${BASE}/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(image)}`,
+    `${BASE}/projects/${encodeProjectPath(project)}/annotations/${encodeURIComponent(imageId)}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -35,21 +37,39 @@ export const saveImageAnnotations = async (project: string, image: string, data:
   if (!response.ok) {
     throw new Error(`${response.status} ${await response.text()}`);
   }
-}
+};
 
 export const exportProject = async (project: string): Promise<Blob> => {
-  const response = await fetch(`${BASE}/projects/${encodeURIComponent(project)}/export`, { method: "POST" });
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/export`, { method: "POST" });
   if (!response.ok) {
     throw new Error(`${response.status} ${await response.text()}`);
   }
 
   return response.blob();
-}
+};
 
 export const runJunctionDetection = (project: string) =>
   request<{ status: string; project: string }>(
-    `${BASE}/projects/${encodeURIComponent(project)}/run-junction-detection`,
+    `${BASE}/projects/${encodeProjectPath(project)}/run-junction-detection`,
     {
       method: "POST",
     },
   );
+
+export const getPipelineLog = async (project: string): Promise<string> => {
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-log`);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.text();
+};
+
+export const getProjectCandidates = () => request<ProjectCandidate[]>(`${BASE}/project-candidates`);
+
+export const setRegisteredProjects = (names: string[]) =>
+  request<ProjectCandidate[]>(`${BASE}/project-candidates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });

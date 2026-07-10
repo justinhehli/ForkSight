@@ -31,9 +31,7 @@ import os
 import tempfile
 from pathlib import Path
 
-import numpy as np
 import torch
-from PIL import Image
 import torchvision.transforms.functional as TF
 import wandb
 
@@ -41,15 +39,36 @@ import Environment.env_utils as env_utils
 from Segmentation.PreProcessing.General.preprocessing_util import (
     create_patches_from_img,
 )
-from Segmentation.Util.nnunet_wandb_util import (
-    download_nnunet_artifact,
+from Segmentation.Util.nnunet_util import (
     initialize_nnunet_predictor,
+    nnunet_artifact_name,
     nnunet_model_key,
+    run_nnunet_predict_from_patches,
     NNUNET_DEFAULT_FOLDS,
     NNUNET_DEFAULT_CHECKPOINT,
 )
-from Evaluation.pipeline_evaluation_shared import PATCH_SIZE
+from Segmentation.Util.patch_grid_util import PATCH_SIZE, nnunet_input_patch_filename
 from Evaluation.compute_metrics_config import NNUNET_EVALUATIONS
+
+
+def download_nnunet_artifact(
+    api: wandb.Api,
+    entity: str,
+    project: str,
+    dataset: str,
+    trainer: str,
+    target_dir: Path,
+) -> Path:
+    """Download the nnUNet WandB artifact for (dataset, trainer) to target_dir.
+
+    Returns the path to the local artifact directory, which contains plans.json,
+    dataset.json, and fold_*/checkpoint_final.pth as uploaded by
+    upload_nnunet_artifact_wandb.py.
+    """
+    name = nnunet_artifact_name(dataset, trainer)
+    artifact = api.artifact(f"{entity}/{project}/{name}:latest", type="model")
+    artifact_dir = Path(artifact.download(root=str(target_dir / name)))
+    return artifact_dir
 
 
 def main():
@@ -131,7 +150,7 @@ def main():
             )
             print(f"  Model dir: {model_dir}")
 
-            predictor = initialize_nnunet_predictor(
+            predictor, _ = initialize_nnunet_predictor(
                 model_dir, device,
                 folds=NNUNET_DEFAULT_FOLDS,
                 checkpoint=NNUNET_DEFAULT_CHECKPOINT,
@@ -152,25 +171,14 @@ def main():
                 patches = create_patches_from_img(
                     img_path, patch_size=PATCH_SIZE[0])
                 for idx in range(patches.shape[0]):
-                    fname = f"{img_path.stem}_patch_{idx:02d}_0000.png"
+                    fname = nnunet_input_patch_filename(img_path.stem, idx)
                     TF.to_pil_image(patches[idx]).save(inp_dir / fname)
                     input_file_lists.append([str(inp_dir / fname)])
 
             print(
                 f"  Running predict_from_files on {len(input_file_lists)} patches")
-            predictor.predict_from_files(
-                input_file_lists,
-                str(model_pred_dir),
-                save_probabilities=False,
-                overwrite=True,
-                num_processes_preprocessing=2,
-                num_processes_segmentation_export=2,
-            )
-
-            # nnUNet saves class-label PNGs (0/1); convert to 0/255 to match SAM output
-            for png in model_pred_dir.glob("*.png"):
-                arr = np.array(Image.open(png))
-                Image.fromarray((arr * 255).astype(np.uint8)).save(png)
+            run_nnunet_predict_from_patches(
+                predictor, input_file_lists, model_pred_dir)
 
             del predictor
             torch.cuda.empty_cache()

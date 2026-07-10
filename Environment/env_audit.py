@@ -17,7 +17,7 @@ import os
 import re
 from pathlib import Path
 
-from Environment.env_utils import get_env_file
+from Environment.env_utils import get_dev_env_file
 
 
 def parse_env_file(filepath: str) -> list[str]:
@@ -190,7 +190,7 @@ def main():
         raise ValueError(
             "Error: --readme, and --repo arguments are required.")
 
-    env_file_path = get_env_file()
+    env_file_path = get_dev_env_file()
 
     env_vars = parse_env_file(env_file_path)
     readme_vars = parse_readme_table(args.readme)

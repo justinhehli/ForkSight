@@ -24,10 +24,18 @@ export interface ImageAnnotations {
 
 export interface ProjectAnnotations {
   junction_detection_pipeline_status: PipelineStatus;
+  pipeline_error?: string | null;
   images: Record<string, ImageAnnotations>;
 }
 
 export interface ImageMeta {
+  id: string;
   name: string;
   processed: boolean;
+}
+
+export interface ProjectCandidate {
+  name: string;
+  valid: boolean;
+  registered: boolean;
 }
