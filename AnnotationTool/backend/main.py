@@ -64,15 +64,33 @@ app.add_middleware(
 
 
 class JunctionType(str, Enum):
-    ReplicationFork = "Replication Fork"
-    ReversedFork = "Reversed Fork"
+    ReplicationFork50 = "Replication Fork 50%"
+    ReplicationFork100 = "Replication Fork 100%"
+    ReversedFork50 = "Reversed Fork 50%"
+    ReversedFork100 = "Reversed Fork 100%"
+
+
+# Weight that each fork label contributes towards the fork-ratio calculation.
+FORK_WEIGHTS = {
+    JunctionType.ReplicationFork50: 0.5,
+    JunctionType.ReplicationFork100: 1.0,
+    JunctionType.ReversedFork50: 0.5,
+    JunctionType.ReversedFork100: 1.0,
+}
+
+REPLICATION_FORK_LABELS = {
+    JunctionType.ReplicationFork50, JunctionType.ReplicationFork100}
+REVERSED_FORK_LABELS = {
+    JunctionType.ReversedFork50, JunctionType.ReversedFork100}
+
+BUILTIN_LABELS = {member.value for member in JunctionType}
 
 
 class Point(BaseModel):
     id: str
     x: int
     y: int
-    label: JunctionType
+    labels: list[str]
 
 
 class ImageAnnotations(BaseModel):
@@ -82,6 +100,10 @@ class ImageAnnotations(BaseModel):
 
 class ProjectSelection(BaseModel):
     names: list[str]
+
+
+class CreateLabelWrapper(BaseModel):
+    label: str
 
 
 # concurrency
@@ -206,6 +228,45 @@ def save_image_annotations(project: str, image_id: str, data: ImageAnnotations):
         save_annotations(pd, ann)
 
 
+@app.post("/projects/{project:path}/labels")
+def add_custom_label(project: str, body: CreateLabelWrapper) -> list[str]:
+    label = body.label.strip()
+    if not label:
+        raise HTTPException(400, "Label cannot be empty")
+    if label in BUILTIN_LABELS:
+        raise HTTPException(400, f"'{label}' is a built-in label")
+
+    pd = project_dir(project)
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        additional = ann.setdefault("additional_labels", [])
+        if label not in additional:
+            additional.append(label)
+            save_annotations(pd, ann)
+        return additional
+
+
+@app.delete("/projects/{project:path}/labels/{label}")
+def delete_custom_label(project: str, label: str) -> list[str]:
+    if label in BUILTIN_LABELS:
+        raise HTTPException(
+            400, f"'{label}' is a built-in label and cannot be deleted")
+
+    pd = project_dir(project)
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        additional = ann.setdefault("additional_labels", [])
+        if label in additional:
+            additional.remove(label)
+        for img_ann in ann.get("images", {}).values():
+            for point in img_ann.get("points", []):
+                if label in point.get("labels", []):
+                    point["labels"] = [
+                        l for l in point["labels"] if l != label]
+        save_annotations(pd, ann)
+        return additional
+
+
 @app.post("/projects/{project:path}/export")
 def export_project(project: str):
     ann = load_annotations(project_dir(project))
@@ -214,9 +275,13 @@ def export_project(project: str):
     all_points = [p for img_ann in images.values()
                   for p in img_ann.get("points", [])]
     replication_forks = sum(
-        1 for p in all_points if p["label"] == JunctionType.ReplicationFork)
+        FORK_WEIGHTS.get(l, 0.0)
+        for p in all_points for l in p.get("labels", [])
+        if l in REPLICATION_FORK_LABELS)
     reversed_forks = sum(
-        1 for p in all_points if p["label"] == JunctionType.ReversedFork)
+        FORK_WEIGHTS.get(l, 0.0)
+        for p in all_points for l in p.get("labels", [])
+        if l in REVERSED_FORK_LABELS)
     processed_count = sum(1 for img_ann in images.values()
                           if img_ann.get("processed", False))
 
@@ -224,8 +289,8 @@ def export_project(project: str):
         "summary": {
             "total_images": len(images),
             "processed_images": processed_count,
-            "replication_fork_count": replication_forks,
-            "reversed_fork_count": reversed_forks,
+            "replication_fork_weighted_count": replication_forks,
+            "reversed_fork_weighted_count": reversed_forks,
             "replication_reversed_ratio": round(replication_forks / reversed_forks, 3) if reversed_forks > 0 else None,
         },
         "images": images,

@@ -31,8 +31,8 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
 )
 
-JUNCTION_LABEL_3WAY = "Replication Fork"
-JUNCTION_LABEL_4WAY = "Reversed Fork"
+JUNCTION_LABEL_3WAY = "Replication Fork 100%"
+JUNCTION_LABEL_4WAY = "Reversed Fork 100%"
 
 
 def main():
@@ -85,10 +85,10 @@ def main():
         points = []
         for x, y in coords_3way:
             points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
-                           "y": round(float(y)), "label": JUNCTION_LABEL_3WAY})
+                           "y": round(float(y)), "labels": [JUNCTION_LABEL_3WAY]})
         for x, y in coords_4way:
             points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
-                           "y": round(float(y)), "label": JUNCTION_LABEL_4WAY})
+                           "y": round(float(y)), "labels": [JUNCTION_LABEL_4WAY]})
 
         images[image_id] = {
             "source_tif": tile["source_tif"],

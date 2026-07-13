@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Add as AddIcon,
   ArrowDropDown as ArrowDropDownIcon,
   BarChart as BarChartIcon,
   CheckCircle as CheckCircleIcon,
@@ -38,6 +39,7 @@ import {
   Menu,
   MenuItem,
   Select,
+  TextField,
   ThemeProvider,
   Toolbar,
   Tooltip,
@@ -45,6 +47,8 @@ import {
   createTheme,
 } from "@mui/material";
 import {
+  addCustomLabel,
+  deleteCustomLabel,
   exportProject,
   getAnnotations,
   getImages,
@@ -57,15 +61,18 @@ import {
 } from "./api";
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
-import { JunctionType, PipelineStatus } from "./types";
+import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus } from "./types";
 import type { ImageAnnotations, ImageMeta, ProjectAnnotations } from "./types";
 import React from "react";
 
 const DRAWER_WIDTH = 270;
-const LABELS = Object.values(JunctionType) as JunctionType[];
 
 const EMPTY_IMG_ANNOTATIONS: ImageAnnotations = { processed: false, points: [] };
-const EMPTY_PROJECT: ProjectAnnotations = { junction_detection_pipeline_status: PipelineStatus.Idle, images: {} };
+const EMPTY_PROJECT: ProjectAnnotations = {
+  junction_detection_pipeline_status: PipelineStatus.Idle,
+  additional_labels: [],
+  images: {},
+};
 
 const App = () => {
   // state
@@ -95,6 +102,7 @@ const App = () => {
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logText, setLogText] = useState("");
   const [runningProject, setRunningProject] = useState<string | null>(null);
+  const [newLabelInput, setNewLabelInput] = useState("");
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logContainerRef = useRef<HTMLPreElement | null>(null);
@@ -108,10 +116,22 @@ const App = () => {
   const currentAnnotations: ImageAnnotations = annotations.images[currentImageId] ?? EMPTY_IMG_ANNOTATIONS;
   const processedCount = images.filter((i) => i.processed).length;
   const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
+
   const stats = useMemo(() => {
     const allPoints = Object.values(annotations.images).flatMap((a) => a.points);
-    const replicationForks = allPoints.filter((p) => p.label === JunctionType.ReplicationFork).length;
-    const reversedForks = allPoints.filter((p) => p.label === JunctionType.ReversedFork).length;
+    const replicationGroup = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
+    const reversedGroup = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
+    let replicationForks = 0;
+    let reversedForks = 0;
+    for (const p of allPoints) {
+      for (const l of p.labels) {
+        if (l === replicationGroup.fifty || l === replicationGroup.hundred) {
+          replicationForks += FORK_WEIGHTS[l];
+        } else if (l === reversedGroup.fifty || l === reversedGroup.hundred) {
+          reversedForks += FORK_WEIGHTS[l];
+        }
+      }
+    }
     const ratio = reversedForks > 0 ? (replicationForks / reversedForks).toFixed(2) : "—";
     return { replicationForks, reversedForks, ratio };
   }, [annotations.images]);
@@ -193,11 +213,59 @@ const App = () => {
     }
   };
 
-  const changePointJunctionType = (id: string, label: JunctionType) => {
+  const cycleForkGroup = (id: string, group: (typeof FORK_GROUPS)[number]) => {
+    const point = currentAnnotations.points.find((p) => p.id === id);
+    if (!point) return;
+    
+    const has50 = point.labels.includes(group.fifty);
+    const has100 = point.labels.includes(group.hundred);
+    const forkLabels = new Set<string>(FORK_GROUPS.flatMap((g) => [g.fifty, g.hundred]));
+    const rest = point.labels.filter((l) => !forkLabels.has(l));
+    const labels = has100 ? rest : has50 ? [...rest, group.hundred] : [...rest, group.fifty];
     handleAnnotationsChange({
       ...currentAnnotations,
-      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, label } : p)),
+      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, labels } : p)),
     });
+  };
+
+  const toggleLabel = (id: string, label: string) => {
+    const point = currentAnnotations.points.find((p) => p.id === id);
+    if (!point) return;
+    const labels = point.labels.includes(label) ? point.labels.filter((l) => l !== label) : [...point.labels, label];
+    handleAnnotationsChange({
+      ...currentAnnotations,
+      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, labels } : p)),
+    });
+  };
+
+  const handleAddCustomLabel = async () => {
+    const label = newLabelInput.trim();
+    if (!label) return;
+    try {
+      const updated = await addCustomLabel(selectedProject, label);
+      setAnnotations((prev) => ({ ...prev, additional_labels: updated }));
+      setNewLabelInput("");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleDeleteCustomLabel = async (label: string) => {
+    try {
+      const updated = await deleteCustomLabel(selectedProject, label);
+      setAnnotations((prev) => ({
+        ...prev,
+        additional_labels: updated,
+        images: Object.fromEntries(
+          Object.entries(prev.images).map(([imgId, img]) => [
+            imgId,
+            { ...img, points: img.points.map((p) => ({ ...p, labels: p.labels.filter((l) => l !== label) })) },
+          ]),
+        ),
+      }));
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   const handleDownloadExport = async () => {
@@ -642,7 +710,6 @@ const App = () => {
                     imageName={currentImageName}
                     annotations={currentAnnotations}
                     onAnnotationsChange={handleAnnotationsChange}
-                    selectedLabel={LABELS[0]}
                     selectedPointId={selectedPointId}
                     onSelectPoint={setSelectedPointId}
                   />
@@ -696,18 +763,23 @@ const App = () => {
                       sx={{ py: 0.25, pl: 1, pr: 4 }}
                     >
                       <ListItemIcon sx={{ minWidth: 22 }}>
-                        <Box
-                          sx={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: "50%",
-                            bgcolor: labelColor(p.label),
-                            flexShrink: 0,
-                          }}
-                        />
+                        <Box sx={{ display: "flex", gap: 0.25, flexWrap: "wrap", maxWidth: 14 }}>
+                          {(p.labels.length > 0 ? p.labels : ["#9e9e9e"]).map((l, li) => (
+                            <Box
+                              key={li}
+                              sx={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                bgcolor: p.labels.length > 0 ? labelColor(l) : l,
+                                flexShrink: 0,
+                              }}
+                            />
+                          ))}
+                        </Box>
                       </ListItemIcon>
                       <ListItemText
-                        primary={`${i + 1}. ${p.label}`}
+                        primary={`${i + 1}. ${p.labels.length > 0 ? p.labels.join(", ") : "(unlabeled)"}`}
                         secondary={`${Math.round(p.x)}, ${Math.round(p.y)}`}
                         primaryTypographyProps={{ variant: "body2", fontSize: 12 }}
                         secondaryTypographyProps={{ variant: "caption", fontFamily: "monospace", fontSize: 10 }}
@@ -717,44 +789,118 @@ const App = () => {
                 ))}
               </List>
 
-              {/* Selected point: change label */}
+              {/* Selected point: change labels */}
               {selectedPoint && (
                 <React.Fragment>
                   <Divider />
                   <Box sx={{ p: 1.5 }}>
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.75 }}>
-                      Selected point label:
-                    </Typography>
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                      {LABELS.map((l) => (
-                        <Button
-                          key={l}
-                          size="small"
-                          variant={l === selectedPoint.label ? "contained" : "outlined"}
-                          onClick={() => changePointJunctionType(selectedPoint.id, l)}
-                          sx={{
-                            textTransform: "none",
-                            justifyContent: "flex-start",
-                            fontSize: 12,
-                            bgcolor: l === selectedPoint.label ? labelColor(l) : undefined,
-                            borderColor: labelColor(l),
-                            color: l === selectedPoint.label ? "#fff" : labelColor(l),
-                            "&:hover": { bgcolor: labelColor(l), borderColor: labelColor(l), color: "#fff" },
-                          }}
-                        >
-                          <Box
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
+                      {FORK_GROUPS.map((group) => {
+                        const active = selectedPoint.labels.includes(group.hundred)
+                          ? group.hundred
+                          : selectedPoint.labels.includes(group.fifty)
+                            ? group.fifty
+                            : null;
+                        const confidence = active === group.hundred ? "100%" : active === group.fifty ? "50%" : null;
+                        // 50% confidence uses the same lighter shade as the point marker on the canvas
+                        const activeColor = active ? labelColor(active) : group.color;
+                        return (
+                          <Button
+                            key={group.name}
+                            size="small"
+                            variant={active ? "contained" : "outlined"}
+                            onClick={() => cycleForkGroup(selectedPoint.id, group)}
                             sx={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: "50%",
-                              bgcolor: l === selectedPoint.label ? "#fff" : labelColor(l),
-                              mr: 1,
-                              flexShrink: 0,
+                              textTransform: "none",
+                              justifyContent: "flex-start",
+                              fontSize: 12,
+                              bgcolor: active ? activeColor : undefined,
+                              borderColor: activeColor,
+                              color: active ? "#fff" : activeColor,
+                              "&:hover": { bgcolor: activeColor, borderColor: activeColor, color: "#fff" },
                             }}
-                          />
-                          {l}
-                        </Button>
-                      ))}
+                          >
+                            <Box
+                              sx={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                bgcolor: active ? "#fff" : activeColor,
+                                mr: 1,
+                                flexShrink: 0,
+                              }}
+                            />
+                            {group.name}
+                            {confidence ? ` (${confidence})` : ""}
+                          </Button>
+                        );
+                      })}
+                    </Box>
+
+                    {annotations.additional_labels.length > 0 && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
+                        {annotations.additional_labels.map((l) => {
+                          const active = selectedPoint.labels.includes(l);
+                          const color = labelColor(l);
+                          return (
+                            <Box key={l} sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                              <Button
+                                size="small"
+                                variant={active ? "contained" : "outlined"}
+                                onClick={() => toggleLabel(selectedPoint.id, l)}
+                                sx={{
+                                  flex: 1,
+                                  textTransform: "none",
+                                  justifyContent: "flex-start",
+                                  fontSize: 12,
+                                  bgcolor: active ? color : undefined,
+                                  borderColor: color,
+                                  color: active ? "#fff" : color,
+                                  "&:hover": { bgcolor: color, borderColor: color, color: "#fff" },
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: "50%",
+                                    bgcolor: active ? "#fff" : color,
+                                    mr: 1,
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                {l}
+                              </Button>
+                              <Tooltip title="Delete label from project">
+                                <IconButton size="small" onClick={() => handleDeleteCustomLabel(l)}>
+                                  <DeleteIcon sx={{ fontSize: 15 }} />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+
+                    <Box sx={{ display: "flex", gap: 0.5 }}>
+                      <TextField
+                        size="small"
+                        placeholder="New label"
+                        value={newLabelInput}
+                        onChange={(e) => setNewLabelInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddCustomLabel();
+                        }}
+                        sx={{ flex: 1 }}
+                        inputProps={{ style: { fontSize: 12, padding: "4px 8px" } }}
+                      />
+                      <Tooltip title="Add project-wide custom label">
+                        <span>
+                          <IconButton size="small" onClick={handleAddCustomLabel} disabled={!newLabelInput.trim()}>
+                            <AddIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Box>
                   </Box>
                 </React.Fragment>
@@ -810,17 +956,17 @@ const App = () => {
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
-              Replication forks
+              Replication forks (weighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
-              {stats.replicationForks}
+              {stats.replicationForks.toFixed(1)}
             </Typography>
 
             <Typography variant="body2" color="text.secondary">
-              Reversed forks
+              Reversed forks (weighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
-              {stats.reversedForks}
+              {stats.reversedForks.toFixed(1)}
             </Typography>
 
             <Divider sx={{ gridColumn: "1 / -1" }} />

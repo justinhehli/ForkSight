@@ -28,9 +28,12 @@ def load_annotations(project_dir: Path) -> dict:
             "junction_detection_pipeline_status": PipelineStatus.Idle,
             "pipeline_error": None,
             "pipeline_pid": None,
+            "additional_labels": [],
             "images": {},
         }
-    return json.loads(p.read_text(encoding="utf-8"))
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data.setdefault("additional_labels", [])
+    return data
 
 
 def save_annotations(project_dir: Path, data: dict) -> None:

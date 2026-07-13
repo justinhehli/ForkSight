@@ -11,11 +11,21 @@ import { JunctionType } from "../types";
 import type { ImageAnnotations, Point } from "../types";
 import React from "react";
 
-const LABEL_COLORS: Record<JunctionType, string> = {
-  [JunctionType.ReplicationFork]: "#4caf50",
-  [JunctionType.ReversedFork]: "#f44336",
+const LABEL_COLORS: Record<string, string> = {
+  [JunctionType.ReplicationFork50]: "#a5d6a7",
+  [JunctionType.ReplicationFork100]: "#4caf50",
+  [JunctionType.ReversedFork50]: "#ef9a9a",
+  [JunctionType.ReversedFork100]: "#f44336",
 };
-export const labelColor = (label: JunctionType): string => LABEL_COLORS[label] ?? "#9e9e9e";
+// Stable, distinguishable colors for user-created custom labels not in LABEL_COLORS.
+const CUSTOM_LABEL_PALETTE = ["#3f51b5", "#9c27b0", "#ff9800", "#009688", "#795548", "#607d8b", "#e91e63", "#00bcd4"];
+const hashString = (s: string): number => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+};
+export const labelColor = (label: string): string =>
+  LABEL_COLORS[label] ?? CUSTOM_LABEL_PALETTE[hashString(label) % CUSTOM_LABEL_PALETTE.length];
 
 interface View {
   panX: number;
@@ -29,7 +39,6 @@ interface Props {
   imageName: string;
   annotations: ImageAnnotations;
   onAnnotationsChange: (a: ImageAnnotations) => void;
-  selectedLabel: JunctionType;
   selectedPointId: string | null;
   onSelectPoint: (id: string | null) => void;
 }
@@ -40,7 +49,6 @@ const ImageAnnotator = ({
   imageName,
   annotations,
   onAnnotationsChange,
-  selectedLabel,
   selectedPointId,
   onSelectPoint,
 }: Props) => {
@@ -70,11 +78,6 @@ const ImageAnnotator = ({
   useEffect(() => {
     annRef.current = annotations;
   }, [annotations]);
-
-  const labelRef = useRef(selectedLabel);
-  useEffect(() => {
-    labelRef.current = selectedLabel;
-  }, [selectedLabel]);
 
   const onChangeRef = useRef(onAnnotationsChange);
   useEffect(() => {
@@ -206,7 +209,7 @@ const ImageAnnotator = ({
       const nx = (e.clientX - rect.left - panX) / zoom;
       const ny = (e.clientY - rect.top - panY) / zoom;
       if (nx < 0 || nx > natRef.current.w || ny < 0 || ny > natRef.current.h) return;
-      const newPt: Point = { id: uuidv4(), x: Math.round(nx), y: Math.round(ny), label: labelRef.current };
+      const newPt: Point = { id: uuidv4(), x: Math.round(nx), y: Math.round(ny), labels: [] };
       const cur = annRef.current;
       onChangeRef.current({ ...cur, points: [...cur.points, newPt] });
       onSelectRef.current(newPt.id);
@@ -332,11 +335,31 @@ const ImageAnnotator = ({
           const cx = p.x * zoom + panX;
           const cy = p.y * zoom + panY;
           const selected = p.id === selectedPointId && p.id !== draggingPointId;
-          const color = labelColor(p.label);
+          // multiple labels are drawn as a small cluster of dots around the point
+          const labels = p.labels.length > 0 ? p.labels : [""];
+          const n = labels.length;
           return (
             <g key={p.id}>
+              {labels.map((l, i) => {
+                const angle = n > 1 ? (2 * Math.PI * i) / n - Math.PI / 2 : 0;
+                const offset = n > 1 ? 5 : 0;
+                const dx = cx + Math.cos(angle) * offset;
+                const dy = cy + Math.sin(angle) * offset;
+                const color = l ? labelColor(l) : "#9e9e9e";
+                return (
+                  <circle
+                    key={i}
+                    cx={dx}
+                    cy={dy}
+                    r={n > 1 ? 5 : 7}
+                    fill={color}
+                    fillOpacity={0.85}
+                    stroke="#fff"
+                    strokeWidth={1.5}
+                  />
+                );
+              })}
               {/* outer ring when selected */}
-              <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
               {selected && (
                 <React.Fragment>
                   <circle cx={cx} cy={cy} r={13} fill="none" stroke="#fff" strokeWidth={2} />
@@ -353,7 +376,7 @@ const ImageAnnotator = ({
                     textAnchor="middle"
                     style={{ pointerEvents: "none", userSelect: "none" }}
                   >
-                    {p.label}
+                    {p.labels.length > 0 ? p.labels.join(", ") : "unlabeled"}
                   </text>
                 </React.Fragment>
               )}

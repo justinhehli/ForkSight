@@ -78,6 +78,18 @@ export const getPipelineLog = async (project: string): Promise<string> => {
   return response.text();
 };
 
+export const addCustomLabel = (project: string, label: string) =>
+  request<string[]>(`${BASE}/projects/${encodeProjectPath(project)}/labels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+
+export const deleteCustomLabel = (project: string, label: string) =>
+  request<string[]>(`${BASE}/projects/${encodeProjectPath(project)}/labels/${encodeURIComponent(label)}`, {
+    method: "DELETE",
+  });
+
 export const getProjectCandidates = () => request<ProjectCandidate[]>(`${BASE}/project-candidates`);
 
 export const setRegisteredProjects = (names: string[]) =>
