@@ -621,6 +621,11 @@ const App = () => {
                   {error}
                 </Alert>
               )}
+              {!selectedProject && (
+                <Alert severity="info" variant="outlined" sx={{ m: 1, flexShrink: 0 }}>
+                  Select a project to begin annotating
+                </Alert>
+              )}
               <Box sx={{ flex: 1, overflow: "hidden", position: "relative" }}>
                 {loading && (
                   <Box
