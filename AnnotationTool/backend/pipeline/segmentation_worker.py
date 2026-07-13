@@ -28,13 +28,22 @@ import torchvision.transforms.functional as TF
 from AnnotationTool.backend.pipeline.discovery import SEGMENTATION_TMP_DIR_PREFIX
 from Segmentation.PreProcessing.General.preprocessing_util import create_patches_from_img
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
+from Segmentation.Util.patch_grid_util import PATCH_SIZE, nnunet_input_patch_filename
+
+# set nnuNet directory env vars to prevent warning logs
+import os
+_tmp_dir = Path(tempfile.gettempdir())
+os.environ.setdefault("nnUNet_raw", str(_tmp_dir / "nnunet_raw"))
+os.environ.setdefault("nnUNet_preprocessed", str(
+    _tmp_dir / "nnunet_preprocessed"))
+os.environ.setdefault("nnUNet_results", str(_tmp_dir / "nnunet_results"))
+
 from Segmentation.Util.nnunet_util import (
     initialize_nnunet_predictor,
     run_nnunet_predict_from_patches,
     NNUNET_DEFAULT_FOLDS,
     NNUNET_DEFAULT_CHECKPOINT,
 )
-from Segmentation.Util.patch_grid_util import PATCH_SIZE, nnunet_input_patch_filename
 
 
 def _save_tif_as_png(tif_path: Path, out_path: Path) -> None:
