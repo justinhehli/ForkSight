@@ -51,6 +51,15 @@ export const exportProject = async (project: string): Promise<Blob> => {
   return response.blob();
 };
 
+export const exportProjectExcel = async (project: string): Promise<Blob> => {
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/export-excel`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.blob();
+};
+
 export const runJunctionDetection = (project: string) =>
   request<{ status: string; project: string }>(
     `${BASE}/projects/${encodeProjectPath(project)}/run-junction-detection`,

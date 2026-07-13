@@ -13,6 +13,8 @@ import {
   LightMode as LightModeIcon,
   NavigateBefore,
   NavigateNext,
+  DataObject as DataObjectIcon,
+  ListAlt as ListAltIcon,
   PlayArrow as PlayArrowIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
   TaskAlt as TaskAltIcon,
@@ -52,6 +54,7 @@ import {
   addCustomLabel,
   deleteCustomLabel,
   exportProject,
+  exportProjectExcel,
   getAnnotations,
   getImages,
   getPipelineLog,
@@ -271,8 +274,9 @@ const App = () => {
     }
   };
 
-  const handleDownloadExport = async () => {
+  const handleDownloadJson = async () => {
     setExportAnchor(null);
+
     try {
       const blob = await exportProject(selectedProject);
       const url = URL.createObjectURL(blob);
@@ -286,10 +290,20 @@ const App = () => {
     }
   };
 
-  const handleRunExportPipeline = () => {
+  const handleDownloadExcel = async () => {
     setExportAnchor(null);
-    // TODO: implement export pipeline
-    // e.g. await fetch(`${BASE}/projects/${project}/run-export-pipeline`, { method: 'POST' })
+
+    try {
+      const blob = await exportProjectExcel(selectedProject);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedProject}_annotations.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   const handleRunJunctionDetection = async () => {
@@ -549,7 +563,7 @@ const App = () => {
             >
               <Button
                 startIcon={<FileDownloadIcon sx={{ fontSize: 16 }} />}
-                onClick={handleDownloadExport}
+                onClick={handleDownloadExcel}
                 sx={{ textTransform: "none", fontSize: 12 }}
               >
                 Export
@@ -565,17 +579,17 @@ const App = () => {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               transformOrigin={{ vertical: "top", horizontal: "right" }}
             >
-              <MenuItem dense onClick={handleDownloadExport}>
+              <MenuItem dense onClick={handleDownloadExcel}>
                 <ListItemIcon>
-                  <FileDownloadIcon fontSize="small" />
+                  <ListAltIcon fontSize="small" />
+                </ListItemIcon>
+                Download Excel
+              </MenuItem>
+              <MenuItem dense onClick={handleDownloadJson}>
+                <ListItemIcon>
+                  <DataObjectIcon fontSize="small" />
                 </ListItemIcon>
                 Download JSON
-              </MenuItem>
-              <MenuItem dense onClick={handleRunExportPipeline}>
-                <ListItemIcon>
-                  <PlayArrowIcon fontSize="small" />
-                </ListItemIcon>
-                Run export pipeline
               </MenuItem>
             </Menu>
 

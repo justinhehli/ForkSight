@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 
 import numpy as np
+from openpyxl import Workbook
+from openpyxl.styles import Font
 from PIL import Image
 
 
@@ -267,11 +269,7 @@ def delete_custom_label(project: str, label: str) -> list[str]:
         return additional
 
 
-@app.post("/projects/{project:path}/export")
-def export_project(project: str):
-    ann = load_annotations(project_dir(project))
-    images = ann["images"]
-
+def _compute_summary(images: dict) -> dict:
     all_points = [p for img_ann in images.values()
                   for p in img_ann.get("points", [])]
     replication_forks = sum(
@@ -285,14 +283,33 @@ def export_project(project: str):
     processed_count = sum(1 for img_ann in images.values()
                           if img_ann.get("processed", False))
 
+    return {
+        "total_images": len(images),
+        "processed_images": processed_count,
+        "replication_fork_weighted_count": replication_forks,
+        "reversed_fork_weighted_count": reversed_forks,
+        "replication_reversed_ratio": round(replication_forks / reversed_forks, 3) if reversed_forks > 0 else None,
+    }
+
+
+# Fork labels (if set) always come first, followed by any additional labels alphabetically -
+# mirrors sortLabelsForDisplay() in the frontend.
+_FORK_LABEL_SET = REPLICATION_FORK_LABELS | REVERSED_FORK_LABELS
+
+
+def _sort_labels_for_display(labels: list[str]) -> list[str]:
+    fork_labels = [l for l in labels if l in _FORK_LABEL_SET]
+    other_labels = sorted(l for l in labels if l not in _FORK_LABEL_SET)
+    return fork_labels + other_labels
+
+
+@app.post("/projects/{project:path}/export")
+def export_project(project: str):
+    ann = load_annotations(project_dir(project))
+    images = ann["images"]
+
     export_data = {
-        "summary": {
-            "total_images": len(images),
-            "processed_images": processed_count,
-            "replication_fork_weighted_count": replication_forks,
-            "reversed_fork_weighted_count": reversed_forks,
-            "replication_reversed_ratio": round(replication_forks / reversed_forks, 3) if reversed_forks > 0 else None,
-        },
+        "summary": _compute_summary(images),
         "images": images,
     }
 
@@ -303,6 +320,58 @@ def export_project(project: str):
         media_type="application/json",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_annotations.json"'},
+    )
+
+
+@app.post("/projects/{project:path}/export-excel")
+def export_project_excel(project: str):
+    ann = load_annotations(project_dir(project))
+    images = ann["images"]
+    summary = _compute_summary(images)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Annotations"
+    bold = Font(bold=True)
+
+    ws.append(["Summary"])
+    ws.cell(row=ws.max_row, column=1).font = bold
+    ws.append(["Total images", summary["total_images"]])
+    ws.append(["Processed images", summary["processed_images"]])
+    ws.append(["Replication fork weighted count",
+              summary["replication_fork_weighted_count"]])
+    ws.append(["Reversed fork weighted count",
+              summary["reversed_fork_weighted_count"]])
+    ws.append(["Replication / reversed ratio",
+              summary["replication_reversed_ratio"]])
+    ws.append([])
+
+    ws.append(["Source TIF", "Processed", "X", "Y", "Labels"])
+    for cell in ws[ws.max_row]:
+        cell.font = bold
+
+    for img_ann in sorted(images.values(), key=lambda i: i.get("display_name", "")):
+        source_tif = img_ann.get("display_name", "")
+        processed = "Yes" if img_ann.get("processed", False) else "No"
+        points = img_ann.get("points", [])
+        if not points:
+            ws.append([source_tif, processed, None, None, None])
+            continue
+        for p in points:
+            labels = ", ".join(_sort_labels_for_display(p.get("labels", [])))
+            ws.append([source_tif, processed, p["x"], p["y"], labels])
+
+    for col, width in zip("ABCDE", (45, 12, 8, 8, 40)):
+        ws.column_dimensions[col].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    safe_name = project.replace("/", "_")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_annotations.xlsx"'},
     )
 
 
