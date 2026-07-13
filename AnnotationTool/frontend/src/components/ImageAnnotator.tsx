@@ -3,8 +3,10 @@ import { Box, IconButton, Tooltip, Typography } from "@mui/material";
 import FitScreenIcon from "@mui/icons-material/FitScreen";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { v4 as uuidv4 } from "uuid";
-import { getImageUrl } from "../api";
+import { getImageUrl, getMaskUrl } from "../api";
 import { JunctionType } from "../types";
 import type { ImageAnnotations, Point } from "../types";
 import React from "react";
@@ -46,6 +48,12 @@ const ImageAnnotator = ({
   const imgRef = useRef<HTMLImageElement>(null);
   const [view, setView] = useState<View>({ panX: 0, panY: 0, zoom: 1 });
   const [natSize, setNatSize] = useState({ w: 1, h: 1 });
+  const [showMask, setShowMask] = useState(true);
+  const [maskAvailable, setMaskAvailable] = useState(true);
+
+  useEffect(() => {
+    setMaskAvailable(true);
+  }, [imageId]);
 
   // keep refs in sync so event-listener closures read fresh values
   const viewRef = useRef(view);
@@ -239,6 +247,7 @@ const ImageAnnotator = ({
         onChangeRef.current({ ...cur, points: cur.points.filter((p) => p.id !== selectedPointId) });
         onSelectRef.current(null);
       }
+      if (e.key === "m" || e.key === "M") setShowMask((s) => !s);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -284,6 +293,26 @@ const ImageAnnotator = ({
           height: nh * zoom,
           imageRendering: zoom > 3 ? "pixelated" : "auto",
           pointerEvents: "none",
+        }}
+      />
+
+      {/* Predicted segmentation mask overlay */}
+      <img
+        key={`${imageId}-mask`}
+        src={getMaskUrl(project, imageId)}
+        onLoad={() => setMaskAvailable(true)}
+        onError={() => setMaskAvailable(false)}
+        draggable={false}
+        alt=""
+        style={{
+          position: "absolute",
+          left: panX,
+          top: panY,
+          width: nw * zoom,
+          height: nh * zoom,
+          imageRendering: zoom > 3 ? "pixelated" : "auto",
+          pointerEvents: "none",
+          opacity: showMask && maskAvailable ? 1 : 0,
         }}
       />
 
@@ -345,6 +374,23 @@ const ImageAnnotator = ({
           alignItems: "center",
         }}
       >
+        <Tooltip
+          title={
+            maskAvailable ? `${showMask ? "Hide" : "Show"} segmentation mask (M)` : "No segmentation mask available"
+          }
+          placement="left"
+        >
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => setShowMask((s) => !s)}
+              disabled={!maskAvailable}
+              sx={{ bgcolor: "rgba(0,0,0,0.55)", color: "#fff", "&:hover": { bgcolor: "rgba(0,0,0,0.8)" } }}
+            >
+              {showMask ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title="Zoom in" placement="left">
           <IconButton
             size="small"

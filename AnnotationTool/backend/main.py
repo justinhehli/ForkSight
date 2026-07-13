@@ -7,6 +7,9 @@ import threading
 from enum import Enum
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 
 def _find_repo_root() -> Path:
     start = Path(__file__).resolve()
@@ -27,6 +30,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from AnnotationTool.backend.pipeline.discovery import (
+    AUTOMATIC_FORK_DETECTION_DIR_NAME,
+    SEGMENTATION_DIR_NAME,
     list_candidate_dirs,
     load_registered_projects,
     save_registered_projects,
@@ -163,6 +168,25 @@ def serve_image(project: str, image_id: str):
     png = convert_tif_to_png(tif_path)
     buf = io.BytesIO()
     png.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@app.get("/projects/{project:path}/images/{image_id}/mask")
+def serve_mask(project: str, image_id: str):
+    MASK_OVERLAY_COLOR = (0, 255, 255, 130)
+
+    pd = project_dir(project)
+    mask_path = pd / AUTOMATIC_FORK_DETECTION_DIR_NAME / \
+        SEGMENTATION_DIR_NAME / f"{image_id}.png"
+    if not mask_path.is_file():
+        raise HTTPException(404, "Segmentation mask not found")
+
+    mask = np.array(Image.open(mask_path).convert("L"))
+    overlay = np.zeros((*mask.shape, 4), dtype=np.uint8)
+    overlay[mask > 127] = MASK_OVERLAY_COLOR
+
+    buf = io.BytesIO()
+    Image.fromarray(overlay, mode="RGBA").save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
 
 

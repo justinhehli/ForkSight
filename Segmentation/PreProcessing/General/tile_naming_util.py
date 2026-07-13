@@ -1,4 +1,15 @@
+import re
 from pathlib import Path
+
+
+def get_display_name(img_path: Path) -> str:
+    tileset_match = re.search(r"\d+", img_path.parent.name)
+    tileset_num = tileset_match.group() if tileset_match else img_path.parent.name
+
+    tile_stem = img_path.stem.replace("-000000_0-000", "")
+    tile_part = tile_stem.split("_", 1)[-1].replace("-", " ")
+
+    return f"Tile Set {tileset_num} - Tile {tile_part}"
 
 
 def get_exp_dir_name(img_path: Path) -> str:

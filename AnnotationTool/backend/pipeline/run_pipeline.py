@@ -18,7 +18,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from AnnotationTool.backend.util import get_repo_root, venv_python_executable
-from Segmentation.PreProcessing.General.tile_naming_util import get_tileset_tile_name
+from Segmentation.PreProcessing.General.tile_naming_util import get_display_name
 
 from AnnotationTool.backend.pipeline.discovery import (
     PIPELINE_TMP_DIR_PREFIX,
@@ -111,7 +111,7 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
         {
             "id": str(uuid.uuid4()),
             "source_tif": t.relative_to(project_dir).as_posix(),
-            "display_name": get_tileset_tile_name(t),
+            "display_name": get_display_name(t),
         }
         for t in new_tiles
     ]

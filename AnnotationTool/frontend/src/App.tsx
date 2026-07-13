@@ -772,6 +772,8 @@ const App = () => {
                   <b>←/→</b>: navigate &nbsp;|&nbsp; <b>P</b>: set processed
                   <br />
                   <b>D / Delete</b>: delete selected point
+                  <br />
+                  <b>M</b>: toggle segmentation mask
                 </Typography>
               </Box>
             </Box>

@@ -7,6 +7,9 @@ const encodeProjectPath = (project: string) => project.split("/").map(encodeURIC
 export const getImageUrl = (project: string, imageId: string) =>
   `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}`;
 
+export const getMaskUrl = (project: string, imageId: string) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/mask`;
+
 const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, init);
   if (!response.ok) {
