@@ -25,6 +25,7 @@ from pathlib import Path
 import torch
 import torchvision.transforms.functional as TF
 
+from AnnotationTool.backend.pipeline.discovery import SEGMENTATION_TMP_DIR_PREFIX
 from Segmentation.PreProcessing.General.preprocessing_util import create_patches_from_img
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
 from Segmentation.Util.nnunet_util import (
@@ -83,7 +84,7 @@ def main():
         ensure_custom_trainer_file=True
     )
 
-    with tempfile.TemporaryDirectory(prefix="forksight_seg_") as tmp:
+    with tempfile.TemporaryDirectory(prefix=SEGMENTATION_TMP_DIR_PREFIX) as tmp:
         patch_input_dir = Path(tmp)
         input_file_lists = []
 

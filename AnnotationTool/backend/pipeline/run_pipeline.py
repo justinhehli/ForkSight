@@ -9,6 +9,7 @@ on disk is the only thing exchanged between this orchestrator and the two subpro
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -20,7 +21,9 @@ from AnnotationTool.backend.util import get_repo_root, venv_python_executable
 from Segmentation.PreProcessing.General.tile_naming_util import get_tileset_tile_name
 
 from AnnotationTool.backend.pipeline.discovery import (
+    PIPELINE_TMP_DIR_PREFIX,
     SEGMENTATION_PATCHES_DIR_NAME,
+    SEGMENTATION_TMP_DIR_PREFIX,
     find_project_tiles,
 )
 
@@ -75,6 +78,13 @@ def _run_worker(module: str, worker_args: list[str], config: PipelineConfig) -> 
     logger.info("%s finished successfully", module)
 
 
+def cleanup_stale_temp_dirs() -> None:
+    tmp_root = Path(tempfile.gettempdir())
+    for prefix in (PIPELINE_TMP_DIR_PREFIX, SEGMENTATION_TMP_DIR_PREFIX):
+        for d in tmp_root.glob(f"{prefix}*"):
+            shutil.rmtree(d, ignore_errors=True)
+
+
 def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dict:
     """Run the pipeline for all project tiles not yet present in annotations.
 
@@ -106,7 +116,7 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
         for t in new_tiles
     ]
 
-    with tempfile.TemporaryDirectory(prefix="forksight_pipeline_") as tmp:
+    with tempfile.TemporaryDirectory(prefix=PIPELINE_TMP_DIR_PREFIX) as tmp:
         tmp_root = Path(tmp)
         manifest_path = tmp_root / "manifest.json"
         results_path = tmp_root / "results.json"

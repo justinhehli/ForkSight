@@ -33,6 +33,9 @@ TILE_GLOB_PATTERN = "LayersData/highmag/Tile Set (*)/*.tif"
 SEGMENTATION_DIR_NAME = "Segmentation"
 SEGMENTATION_PATCHES_DIR_NAME = "SegmentationPatches"
 
+PIPELINE_TMP_DIR_PREFIX = "forksight_pipeline_"
+SEGMENTATION_TMP_DIR_PREFIX = "forksight_seg_"
+
 
 def is_valid_project_dir(path: Path) -> bool:
     return (path / "LayersData" / "highmag").is_dir()

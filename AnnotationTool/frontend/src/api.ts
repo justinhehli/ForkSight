@@ -56,6 +56,16 @@ export const runJunctionDetection = (project: string) =>
     },
   );
 
+export const stopJunctionDetection = (project: string) =>
+  request<{ status: string; project: string }>(
+    `${BASE}/projects/${encodeProjectPath(project)}/stop-junction-detection`,
+    {
+      method: "POST",
+    },
+  );
+
+export const getPipelineStatus = () => request<{ running_project: string | null }>(`${BASE}/pipeline-status`);
+
 export const getPipelineLog = async (project: string): Promise<string> => {
   const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-log`);
   if (!response.ok) {

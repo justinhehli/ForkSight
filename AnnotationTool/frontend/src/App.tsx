@@ -49,9 +49,11 @@ import {
   getAnnotations,
   getImages,
   getPipelineLog,
+  getPipelineStatus,
   getProjects,
   runJunctionDetection,
   saveImageAnnotations,
+  stopJunctionDetection,
 } from "./api";
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
@@ -92,6 +94,7 @@ const App = () => {
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logText, setLogText] = useState("");
+  const [runningProject, setRunningProject] = useState<string | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logContainerRef = useRef<HTMLPreElement | null>(null);
@@ -99,6 +102,7 @@ const App = () => {
   // derived values
   // ====================
   const pipelineStatus = annotations.junction_detection_pipeline_status;
+  const blockedByOtherProject = runningProject !== null && runningProject !== selectedProject;
   const currentImageId = images[imageIdx]?.id ?? "";
   const currentImageName = images[imageIdx]?.name ?? "";
   const currentAnnotations: ImageAnnotations = annotations.images[currentImageId] ?? EMPTY_IMG_ANNOTATIONS;
@@ -226,6 +230,58 @@ const App = () => {
       loadSelectedProject();
     }
   };
+
+  const handleStopJunctionDetection = async () => {
+    try {
+      await stopJunctionDetection(selectedProject);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      loadSelectedProject();
+    }
+  };
+
+  // global poll: which project (if any) has a pipeline running
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { running_project } = await getPipelineStatus();
+        if (!cancelled) {
+          setRunningProject(running_project);
+        }
+      } catch {
+        // ignore transient errors, keep showing the last known state
+      }
+    };
+
+    poll();
+
+    const timer = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // while the selected project's pipeline is running, poll its annotations
+  // so completion/failure is reflected here instead of spinning forever
+  useEffect(() => {
+    if (pipelineStatus !== PipelineStatus.Running || !selectedProject) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const latest = await getAnnotations(selectedProject);
+        setAnnotations(latest);
+        if (latest.junction_detection_pipeline_status === PipelineStatus.Done) {
+          loadSelectedProject();
+        }
+      } catch {
+        // ignore transient errors, keep showing the last known state
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [pipelineStatus, selectedProject, loadSelectedProject]);
 
   const handleOpenLogDialog = async () => {
     setLogDialogOpen(true);
@@ -514,13 +570,16 @@ const App = () => {
                           Fork detection not yet run
                         </Typography>
                         <Typography variant="body2" color="text.secondary" textAlign="center">
-                          Run the automatic fork detection pipeline before reviewing images.
+                          {blockedByOtherProject
+                            ? `Fork detection is currently running for project "${runningProject}". Please wait until it finishes.`
+                            : "Run the automatic fork detection pipeline before reviewing images."}
                         </Typography>
                         <Button
                           variant="contained"
                           size="large"
                           startIcon={<PlayArrowIcon />}
                           onClick={handleRunJunctionDetection}
+                          disabled={blockedByOtherProject}
                         >
                           Run fork detection
                         </Button>
@@ -533,11 +592,16 @@ const App = () => {
                           Automatic fork detection is running…
                         </Typography>
                         <Typography variant="body2" color="text.secondary" textAlign="center">
-                          Reload this project once the pipeline completes.
+                          This project reloads automatically once the pipeline completes.
                         </Typography>
-                        <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
-                          View log
-                        </Button>
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
+                            View log
+                          </Button>
+                          <Button variant="outlined" size="small" color="error" onClick={handleStopJunctionDetection}>
+                            Stop pipeline
+                          </Button>
+                        </Box>
                       </React.Fragment>
                     )}
                     {pipelineStatus === PipelineStatus.Failed && (
@@ -546,8 +610,10 @@ const App = () => {
                           Fork detection failed
                         </Typography>
                         <Typography variant="body2" color="text.secondary" textAlign="center">
-                          {annotations.pipeline_error ??
-                            "The automatic fork detection pipeline encountered an error. Check the logs and try again."}
+                          {blockedByOtherProject
+                            ? `Fork detection is currently running for project "${runningProject}". Please wait until it finishes.`
+                            : (annotations.pipeline_error ??
+                              "The automatic fork detection pipeline encountered an error. Check the logs and try again.")}
                         </Typography>
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
@@ -559,6 +625,7 @@ const App = () => {
                             color="error"
                             startIcon={<PlayArrowIcon />}
                             onClick={handleRunJunctionDetection}
+                            disabled={blockedByOtherProject}
                           >
                             Re-run fork detection
                           </Button>

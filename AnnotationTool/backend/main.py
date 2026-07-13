@@ -37,7 +37,8 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     pipeline_log_path,
     save_annotations,
 )
-from AnnotationTool.backend.pipeline.process_util import is_pid_running
+from AnnotationTool.backend.pipeline.process_util import is_pid_running, terminate_process_tree
+from AnnotationTool.backend.pipeline.run_pipeline import cleanup_stale_temp_dirs
 from AnnotationTool.backend.util import get_repo_root
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
 
@@ -251,6 +252,37 @@ def _find_running_pipeline() -> str | None:
                 ann["pipeline_pid"] = None
                 save_annotations(pd, ann)
     return None
+
+
+@app.get("/pipeline-status")
+def get_pipeline_status():
+    return {"running_project": _find_running_pipeline()}
+
+
+@app.post("/projects/{project:path}/stop-junction-detection")
+def stop_junction_detection(project: str):
+    pd = project_dir(project)
+
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        if ann.get("junction_detection_pipeline_status") != PipelineStatus.Running:
+            raise HTTPException(
+                409, f"No junction detection pipeline is running for project '{project}'")
+        pid = ann.get("pipeline_pid")
+
+    # Terminating the process tree can take a few seconds (graceful attempt
+    # before escalating to a forceful kill) - do this outside the lock.
+    terminate_process_tree(pid)
+    cleanup_stale_temp_dirs()
+
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        ann["junction_detection_pipeline_status"] = PipelineStatus.Failed
+        ann["pipeline_error"] = "Pipeline stopped by user."
+        ann["pipeline_pid"] = None
+        save_annotations(pd, ann)
+
+    return {"status": PipelineStatus.Failed, "project": project}
 
 
 @app.post("/projects/{project:path}/run-junction-detection")
