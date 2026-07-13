@@ -35,6 +35,15 @@ export const FORK_GROUPS: ForkGroup[] = [
   },
 ];
 
+const FORK_LABEL_SET = new Set<string>(FORK_GROUPS.flatMap((g) => [g.fifty, g.hundred]));
+
+// Fork labels (if set) always come first, followed by any additional labels alphabetically.
+export const sortLabelsForDisplay = (labels: string[]): string[] => {
+  const forkLabels = labels.filter((l) => FORK_LABEL_SET.has(l));
+  const otherLabels = labels.filter((l) => !FORK_LABEL_SET.has(l)).sort((a, b) => a.localeCompare(b));
+  return [...forkLabels, ...otherLabels];
+};
+
 export enum PipelineStatus {
   Idle = "Idle",
   Running = "Running",

@@ -7,7 +7,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { v4 as uuidv4 } from "uuid";
 import { getImageUrl, getMaskUrl } from "../api";
-import { JunctionType } from "../types";
+import { JunctionType, sortLabelsForDisplay } from "../types";
 import type { ImageAnnotations, Point } from "../types";
 import React from "react";
 
@@ -336,7 +336,7 @@ const ImageAnnotator = ({
           const cy = p.y * zoom + panY;
           const selected = p.id === selectedPointId && p.id !== draggingPointId;
           // multiple labels are drawn as a small cluster of dots around the point
-          const labels = p.labels.length > 0 ? p.labels : [""];
+          const labels = p.labels.length > 0 ? sortLabelsForDisplay(p.labels) : [""];
           const n = labels.length;
           return (
             <g key={p.id}>
@@ -376,7 +376,7 @@ const ImageAnnotator = ({
                     textAnchor="middle"
                     style={{ pointerEvents: "none", userSelect: "none" }}
                   >
-                    {p.labels.length > 0 ? p.labels.join(", ") : "unlabeled"}
+                    {p.labels.length > 0 ? sortLabelsForDisplay(p.labels).join(", ") : "unlabeled"}
                   </text>
                 </React.Fragment>
               )}
