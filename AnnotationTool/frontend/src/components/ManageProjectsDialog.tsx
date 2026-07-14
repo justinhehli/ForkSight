@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { ContentCopy as ContentCopyIcon } from "@mui/icons-material";
 import {
   Alert,
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -8,12 +10,13 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   List,
   ListItem,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { getProjectCandidates, setRegisteredProjects } from "../api";
+import { getProjectCandidates, getProjectFolderPath, setRegisteredProjects } from "../api";
 import type { ProjectCandidate } from "../types";
 
 interface Props {
@@ -28,6 +31,7 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedName, setCopiedName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +61,17 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
     });
   };
 
+  const handleCopyPath = async (name: string) => {
+    try {
+      const { path } = await getProjectFolderPath(name);
+      await navigator.clipboard.writeText(path);
+      setCopiedName(name);
+      setTimeout(() => setCopiedName((prev) => (prev === name ? null : prev)), 1500);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -73,12 +88,12 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Manage projects</DialogTitle>
       <DialogContent dividers sx={{ maxHeight: 420 }}>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-          Select which directories should show up as projects.<br />Directories with a <code>*.mapsxml</code>{" "} 
-          file and a <code>LayersData/highmag</code>{" "} sub-directory are considered as candidates.
+          Select which directories should show up as projects. Directories with a <code>*.mapsxml</code>{" "} 
+          file and a <code>./LayersData/highmag</code>{" "} sub-directory are considered as candidates.
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 1 }}>
@@ -93,21 +108,28 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
         <List dense disablePadding>
           {candidates.map((c) => (
             <ListItem key={c.name} disablePadding>
-              <Tooltip title={c.valid ? "" : "No LayersData/highmag folder found in this directory"}>
-                <span>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        size="small"
-                        checked={selected.has(c.name)}
-                        disabled={!c.valid}
-                        onChange={() => toggle(c.name)}
-                      />
-                    }
-                    label={c.name}
-                  />
-                </span>
-              </Tooltip>
+              <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
+                <Tooltip title={c.valid ? "" : "No LayersData/highmag folder found in this directory"}>
+                  <span>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selected.has(c.name)}
+                          disabled={!c.valid}
+                          onChange={() => toggle(c.name)}
+                        />
+                      }
+                      label={c.name}
+                    />
+                  </span>
+                </Tooltip>
+                <Tooltip title={copiedName === c.name ? "Copied!" : "Copy directory path"}>
+                  <IconButton size="small" sx={{ ml: "auto" }} onClick={() => handleCopyPath(c.name)}>
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </ListItem>
           ))}
         </List>

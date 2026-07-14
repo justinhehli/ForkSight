@@ -8,6 +8,7 @@ import {
   Delete as DeleteIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
+  ContentCopy as ContentCopyIcon,
   FileDownload as FileDownloadIcon,
   FolderShared as FolderSharedIcon,
   LightMode as LightModeIcon,
@@ -59,6 +60,7 @@ import {
   getImages,
   getPipelineLog,
   getPipelineStatus,
+  getProjectFolderPath,
   getProjects,
   runJunctionDetection,
   saveImageAnnotations,
@@ -104,6 +106,7 @@ const App = () => {
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
+  const [pathCopied, setPathCopied] = useState(false);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logText, setLogText] = useState("");
   const [runningProject, setRunningProject] = useState<string | null>(null);
@@ -306,6 +309,17 @@ const App = () => {
     }
   };
 
+  const handleCopyProjectPath = async () => {
+    try {
+      const { path } = await getProjectFolderPath(selectedProject);
+      await navigator.clipboard.writeText(path);
+      setPathCopied(true);
+      setTimeout(() => setPathCopied(false), 1500);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const handleRunJunctionDetection = async () => {
     setAnnotations((prev) => ({ ...prev, junction_detection_pipeline_status: PipelineStatus.Running }));
     try {
@@ -438,7 +452,7 @@ const App = () => {
           </Toolbar>
 
           {/* Project selector */}
-          <Box sx={{ p: 1.5, display: "flex", gap: 1, alignItems: "flex-start" }}>
+          <Box sx={{ p: 1.5, pb: selectedProject ? 0.5 : 1.5, display: "flex", gap: 1 }}>
             <FormControl fullWidth size="small">
               <InputLabel>Project</InputLabel>
               <Select
@@ -466,6 +480,24 @@ const App = () => {
               </IconButton>
             </Tooltip>
           </Box>
+          {selectedProject && (
+            <Box sx={{ px: 1.5, pb: 1, display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                title={selectedProject}
+                sx={{ flex: 1, minWidth: 0 }}
+              >
+                {selectedProject}
+              </Typography>
+              <Tooltip title={pathCopied ? "Copied!" : "Copy directory path"}>
+                <IconButton size="small" onClick={handleCopyProjectPath}>
+                  <ContentCopyIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
           <Divider />
 
           {/* Image list */}

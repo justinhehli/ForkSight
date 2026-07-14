@@ -36,6 +36,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
     list_candidate_dirs,
     load_registered_projects,
+    resolve_unc_path,
     save_registered_projects,
 )
 from AnnotationTool.backend.pipeline.annotations_store import (
@@ -162,6 +163,19 @@ def get_project_candidates() -> list[dict]:
 def set_project_candidates(selection: ProjectSelection) -> list[dict]:
     save_registered_projects(PROJECTS_PARENT_DIR, selection.names)
     return list_candidate_dirs(PROJECTS_PARENT_DIR)
+
+
+@app.get("/project-candidates/{name:path}/path")
+def get_project_candidate_path(name: str):
+    target = (PROJECTS_PARENT_DIR / name).resolve()
+    try:
+        target.relative_to(PROJECTS_PARENT_DIR.resolve())
+    except ValueError:
+        raise HTTPException(400, "Invalid project path")
+    if not target.is_dir():
+        raise HTTPException(404, "Directory not found")
+
+    return {"path": str(resolve_unc_path(target))}
 
 
 @app.get("/projects/{project:path}/images")

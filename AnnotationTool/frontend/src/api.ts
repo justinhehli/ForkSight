@@ -101,6 +101,9 @@ export const deleteCustomLabel = (project: string, label: string) =>
 
 export const getProjectCandidates = () => request<ProjectCandidate[]>(`${BASE}/project-candidates`);
 
+export const getProjectFolderPath = (name: string) =>
+  request<{ path: string }>(`${BASE}/project-candidates/${encodeProjectPath(name)}/path`);
+
 export const setRegisteredProjects = (names: string[]) =>
   request<ProjectCandidate[]>(`${BASE}/project-candidates`, {
     method: "POST",

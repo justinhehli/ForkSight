@@ -8,8 +8,11 @@ file  stored in this parent directory. Each "registered" project is
 identified by its path relative to PROJECTS_PARENT_DIR
 """
 
+import ctypes
 import json
 import os
+import platform
+import re
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -87,3 +90,77 @@ def list_candidate_dirs(parent_dir: Path) -> list[dict]:
 
 def find_project_tiles(base_folder: Path) -> list[Path]:
     return sorted(Path(base_folder).glob(TILE_GLOB_PATTERN))
+
+
+def resolve_unc_path(path: Path) -> Path:
+    """If `path` lives on a mapped network drive/mount, return the equivalent network
+    address (UNC path on Windows, mount source on Linux)"""
+    system = platform.system()
+    if system == "Windows":
+        return _resolve_windows_unc_path(path)
+    if system == "Linux":
+        return _resolve_linux_network_path(path)
+    return path
+
+
+def _resolve_windows_unc_path(path: Path) -> Path:
+    drive = path.drive
+    if len(drive) != 2 or drive[1] != ":":
+        return path
+
+    ERROR_MORE_DATA = 234
+
+    buf_len = ctypes.c_ulong(260)
+    buf = ctypes.create_unicode_buffer(buf_len.value)
+    result = ctypes.windll.mpr.WNetGetConnectionW(
+        drive, buf, ctypes.byref(buf_len))
+    if result == ERROR_MORE_DATA:
+        # buf_len now holds the required size; retry with a big-enough buffer.
+        buf = ctypes.create_unicode_buffer(buf_len.value)
+        result = ctypes.windll.mpr.WNetGetConnectionW(
+            drive, buf, ctypes.byref(buf_len))
+    if result != 0:
+        return path
+
+    return Path(buf.value, *path.parts[1:])
+
+
+_NETWORK_FS_TYPES = {
+    "cifs", "smb3", "smbfs", "nfs", "nfs2", "nfs3", "nfs4", "fuse.sshfs",
+}
+
+
+def _unescape_mtab_field(field: str) -> str:
+    # /proc/mounts octal-escapes spaces, tabs, newlines and backslashes (fstab convention).
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+
+def _resolve_linux_network_path(path: Path) -> Path:
+    try:
+        lines = Path("/proc/mounts").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return path
+
+    resolved = path.resolve()
+    best_mount_point: Path | None = None
+    best_source = ""
+    best_fs_type = ""
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+        source, mount_point, fs_type = (
+            _unescape_mtab_field(f) for f in fields[:3])
+        mount_point_path = Path(mount_point)
+        try:
+            resolved.relative_to(mount_point_path)
+        except ValueError:
+            continue
+        if best_mount_point is None or len(mount_point_path.parts) > len(best_mount_point.parts):
+            best_mount_point, best_source, best_fs_type = mount_point_path, source, fs_type
+
+    if best_mount_point is None or best_fs_type not in _NETWORK_FS_TYPES:
+        return path
+
+    rel = resolved.relative_to(best_mount_point)
+    return Path(best_source, *rel.parts)
