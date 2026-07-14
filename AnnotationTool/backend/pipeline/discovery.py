@@ -38,7 +38,7 @@ SEGMENTATION_TMP_DIR_PREFIX = "forksight_seg_"
 
 
 def is_valid_project_dir(path: Path) -> bool:
-    return (path / "LayersData" / "highmag").is_dir()
+    return any(p.is_file() for p in path.glob("*.mapsxml")) and (path / "LayersData" / "highmag").is_dir()
 
 
 def _registry_path(parent_dir: Path) -> Path:
