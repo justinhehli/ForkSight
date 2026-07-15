@@ -1,4 +1,3 @@
-import platform
 from pathlib import Path
 
 
@@ -11,7 +10,4 @@ def get_repo_root() -> Path:
 
 
 def venv_python_executable(venv_dir: Path) -> Path:
-    venv_dir = Path(venv_dir)
-    if platform.system() == "Windows":
-        return venv_dir / "Scripts" / "python.exe"
-    return venv_dir / "bin" / "python"
+    return Path(venv_dir) / "bin" / "python"

@@ -8,10 +8,8 @@ file  stored in this parent directory. Each "registered" project is
 identified by its path relative to PROJECTS_PARENT_DIR
 """
 
-import ctypes
 import json
 import os
-import platform
 import re
 from pathlib import Path
 
@@ -92,39 +90,6 @@ def find_project_tiles(base_folder: Path) -> list[Path]:
     return sorted(Path(base_folder).glob(TILE_GLOB_PATTERN))
 
 
-def resolve_unc_path(path: Path) -> Path:
-    """If `path` lives on a mapped network drive/mount, return the equivalent network
-    address (UNC path on Windows, mount source on Linux)"""
-    system = platform.system()
-    if system == "Windows":
-        return _resolve_windows_unc_path(path)
-    if system == "Linux":
-        return _resolve_linux_network_path(path)
-    return path
-
-
-def _resolve_windows_unc_path(path: Path) -> Path:
-    drive = path.drive
-    if len(drive) != 2 or drive[1] != ":":
-        return path
-
-    ERROR_MORE_DATA = 234
-
-    buf_len = ctypes.c_ulong(260)
-    buf = ctypes.create_unicode_buffer(buf_len.value)
-    result = ctypes.windll.mpr.WNetGetConnectionW(
-        drive, buf, ctypes.byref(buf_len))
-    if result == ERROR_MORE_DATA:
-        # buf_len now holds the required size; retry with a big-enough buffer.
-        buf = ctypes.create_unicode_buffer(buf_len.value)
-        result = ctypes.windll.mpr.WNetGetConnectionW(
-            drive, buf, ctypes.byref(buf_len))
-    if result != 0:
-        return path
-
-    return Path(buf.value, *path.parts[1:])
-
-
 _NETWORK_FS_TYPES = {
     "cifs", "smb3", "smbfs", "nfs", "nfs2", "nfs3", "nfs4", "fuse.sshfs",
 }
@@ -135,7 +100,8 @@ def _unescape_mtab_field(field: str) -> str:
     return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
 
 
-def _resolve_linux_network_path(path: Path) -> Path:
+def resolve_unc_path(path: Path) -> Path:
+    """If `path` lives on a mapped network mount, return the equivalent mount source"""
     try:
         lines = Path("/proc/mounts").read_text(encoding="utf-8").splitlines()
     except OSError:
