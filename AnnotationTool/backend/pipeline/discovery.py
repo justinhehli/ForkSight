@@ -42,8 +42,12 @@ def is_valid_project_dir(path: Path) -> bool:
     return any(p.is_file() for p in path.glob("*.mapsxml")) and (path / "LayersData" / "highmag").is_dir()
 
 
+def fork_detection_dir(base_dir: Path) -> Path:
+    return Path(base_dir) / AUTOMATIC_FORK_DETECTION_DIR_NAME
+
+
 def _registry_path(parent_dir: Path) -> Path:
-    return Path(parent_dir) / AUTOMATIC_FORK_DETECTION_DIR_NAME / REGISTRY_FILENAME
+    return fork_detection_dir(parent_dir) / REGISTRY_FILENAME
 
 
 def load_registered_projects(parent_dir: Path) -> set[str]:

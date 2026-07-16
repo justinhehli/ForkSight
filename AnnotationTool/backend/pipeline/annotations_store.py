@@ -3,7 +3,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-from AnnotationTool.backend.pipeline.discovery import AUTOMATIC_FORK_DETECTION_DIR_NAME
+from AnnotationTool.backend.pipeline.discovery import fork_detection_dir
 
 
 class PipelineStatus(str, Enum):
@@ -14,11 +14,11 @@ class PipelineStatus(str, Enum):
 
 
 def annotations_file_path(project_dir: Path) -> Path:
-    return Path(project_dir) / AUTOMATIC_FORK_DETECTION_DIR_NAME / "annotations.json"
+    return fork_detection_dir(project_dir) / "annotations.json"
 
 
 def pipeline_log_path(project_dir: Path) -> Path:
-    return Path(project_dir) / AUTOMATIC_FORK_DETECTION_DIR_NAME / "pipeline.log"
+    return fork_detection_dir(project_dir) / "pipeline.log"
 
 
 def load_annotations(project_dir: Path) -> dict:

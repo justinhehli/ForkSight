@@ -22,6 +22,7 @@ import {
 } from "@mui/icons-material";
 import {
   Alert,
+  Backdrop,
   Box,
   Button,
   ButtonGroup,
@@ -44,6 +45,7 @@ import {
   Menu,
   MenuItem,
   Select,
+  Snackbar,
   TextField,
   ThemeProvider,
   Toolbar,
@@ -62,6 +64,7 @@ import {
   getPipelineStatus,
   getProjectFolderPath,
   getProjects,
+  pingBackend,
   runJunctionDetection,
   saveImageAnnotations,
   stopJunctionDetection,
@@ -112,6 +115,8 @@ const App = () => {
   const [runningProject, setRunningProject] = useState<string | null>(null);
   const [newLabelInput, setNewLabelInput] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(true);
+  const [backendRestarting, setBackendRestarting] = useState(false);
+  const [backendRestartTimedOut, setBackendRestartTimedOut] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logContainerRef = useRef<HTMLPreElement | null>(null);
@@ -152,6 +157,38 @@ const App = () => {
       .then((ps) => {
         setProjects(ps);
       })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  // wait out a backend restart (triggered by registering a new project)
+  // ====================
+  const RESTART_GRACE_MS = 1500; // covers the backend's own delay before it actually exits
+  const RESTART_TIMEOUT_MS = 30000;
+  const RESTART_POLL_INTERVAL_MS = 500;
+
+  const waitForBackendRestart = useCallback(async () => {
+    setBackendRestarting(true);
+    setBackendRestartTimedOut(false);
+
+    // give the backend a moment to actually go down before polling, so a fast
+    // request that beats the restart doesn't conclude too early
+    await new Promise((resolve) => setTimeout(resolve, RESTART_GRACE_MS));
+
+    const deadline = Date.now() + RESTART_TIMEOUT_MS;
+    let alive = await pingBackend();
+    while (!alive && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_INTERVAL_MS));
+      alive = await pingBackend();
+    }
+
+    setBackendRestarting(false);
+    if (!alive) {
+      setBackendRestartTimedOut(true);
+      return;
+    }
+
+    getProjects()
+      .then(setProjects)
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -1105,12 +1142,39 @@ const App = () => {
       <ManageProjectsDialog
         open={manageProjectsOpen}
         onClose={() => setManageProjectsOpen(false)}
-        onSaved={() =>
-          getProjects()
-            .then(setProjects)
-            .catch((e) => setError(String(e)))
-        }
+        onSaved={(mightRestart) => {
+          if (mightRestart) {
+            waitForBackendRestart();
+          } else {
+            getProjects()
+              .then(setProjects)
+              .catch((e) => setError(String(e)));
+          }
+        }}
       />
+      <Backdrop
+        open={backendRestarting}
+        sx={{
+          zIndex: (t) => t.zIndex.drawer + 10,
+          color: "#fff",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="h6">Restarting backend…</Typography>
+        <Typography variant="body2">This can take a few seconds.</Typography>
+      </Backdrop>
+      <Snackbar
+        open={backendRestartTimedOut}
+        onClose={() => setBackendRestartTimedOut(false)}
+        autoHideDuration={8000}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="error" onClose={() => setBackendRestartTimedOut(false)}>
+          The backend didn't come back after restarting. Check that it's still running.
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 };

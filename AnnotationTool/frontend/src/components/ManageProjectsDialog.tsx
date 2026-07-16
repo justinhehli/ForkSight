@@ -22,7 +22,9 @@ import type { ProjectCandidate } from "../types";
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  // `mightRestart` is true if this save registered a project that wasn't previously
+  // registered - the backend may need to restart itself to gain write access to it.
+  onSaved: (mightRestart: boolean) => void;
 }
 
 const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
@@ -72,13 +74,16 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
     }
   };
 
+  const hasNewSelection = candidates.some((c) => selected.has(c.name) && !c.registered);
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    
+    const mightRestart = hasNewSelection;
+
     try {
       await setRegisteredProjects(Array.from(selected));
-      onSaved();
+      onSaved(mightRestart);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -98,6 +103,12 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
         {error && (
           <Alert severity="error" sx={{ mb: 1 }}>
             {error}
+          </Alert>
+        )}
+        {hasNewSelection && (
+          <Alert severity="warning" sx={{ mb: 1 }}>
+            Adding a new project restarts the backend so it can gain write access to it.
+            The app will be briefly unavailable while it restarts.
           </Alert>
         )}
         {!loading && candidates.length === 0 && !error && (

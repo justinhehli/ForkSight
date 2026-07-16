@@ -21,6 +21,21 @@ const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
 
 export const getProjects = () => request<string[]>(`${BASE}/projects`);
 
+// liveness check used while waiting for the backend to restart
+// (registering a new project restarts the sandboxed backend)
+export const pingBackend = async (timeoutMs = 1500): Promise<boolean> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${BASE}/projects`, { signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export const getImages = (project: string) =>
   request<ImageMeta[]>(`${BASE}/projects/${encodeProjectPath(project)}/images`);
 

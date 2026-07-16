@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from enum import Enum
 from pathlib import Path
 
@@ -26,14 +27,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from AnnotationTool.backend.bwrap_util import RESTART_EXIT_CODE, is_sandboxed, sandbox_prefix
 from AnnotationTool.backend.pipeline.discovery import (
-    AUTOMATIC_FORK_DETECTION_DIR_NAME,
     SEGMENTATION_DIR_NAME,
+    fork_detection_dir,
     list_candidate_dirs,
     load_registered_projects,
     resolve_unc_path,
@@ -46,7 +48,7 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     save_annotations,
 )
 from AnnotationTool.backend.pipeline.process_util import is_pid_running, terminate_process_tree
-from AnnotationTool.backend.pipeline.run_pipeline import cleanup_stale_temp_dirs
+from AnnotationTool.backend.pipeline.run_pipeline import PipelineConfig, cleanup_stale_temp_dirs
 from AnnotationTool.backend.util import get_repo_root
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
 
@@ -159,9 +161,39 @@ def get_project_candidates() -> list[dict]:
     return list_candidate_dirs(PROJECTS_PARENT_DIR)
 
 
+def _exit_for_restart(delay: float = 0.5) -> None:
+    time.sleep(delay)
+    print(f"[main] Exiting with code {RESTART_EXIT_CODE} so the supervisor "
+          "relaunches with a fresh sandbox", file=sys.stderr, flush=True)
+    os._exit(RESTART_EXIT_CODE)
+
+
 @app.post("/project-candidates")
-def set_project_candidates(selection: ProjectSelection) -> list[dict]:
+def set_project_candidates(selection: ProjectSelection, background_tasks: BackgroundTasks) -> list[dict]:
+    previously_registered = load_registered_projects(PROJECTS_PARENT_DIR)
     save_registered_projects(PROJECTS_PARENT_DIR, selection.names)
+    newly_registered = set(selection.names) - previously_registered
+
+    print(f"[main] set_project_candidates: sandboxed={is_sandboxed()} "
+          f"newly_registered={newly_registered}", file=sys.stderr, flush=True)
+
+    # A project's AutomaticForkDetection dir is only created once it's actually
+    # registered here, not merely discovered as a candidate.
+    if is_sandboxed():
+        # This process can't create the dir itself: the project's folder isn't
+        # in the sandbox's read-write allowlist until the backend is relaunched
+        # with a fresh one, which is exactly what needs to happen here.
+        missing_dirs = [name for name in newly_registered
+                        if not fork_detection_dir(PROJECTS_PARENT_DIR / name).is_dir()]
+        print(f"[main] missing_dirs={missing_dirs}",
+              file=sys.stderr, flush=True)
+        if missing_dirs:
+            background_tasks.add_task(_exit_for_restart)
+    else:
+        for name in newly_registered:
+            fork_detection_dir(PROJECTS_PARENT_DIR / name).mkdir(
+                parents=True, exist_ok=True)
+
     return list_candidate_dirs(PROJECTS_PARENT_DIR)
 
 
@@ -214,8 +246,8 @@ def serve_mask(project: str, image_id: str):
     MASK_OVERLAY_COLOR = (0, 255, 255, 130)
 
     pd = project_dir(project)
-    mask_path = pd / AUTOMATIC_FORK_DETECTION_DIR_NAME / \
-        SEGMENTATION_DIR_NAME / f"{image_id}.png"
+    mask_path = fork_detection_dir(
+        pd) / SEGMENTATION_DIR_NAME / f"{image_id}.png"
     if not mask_path.is_file():
         raise HTTPException(404, "Segmentation mask not found")
 
@@ -474,14 +506,24 @@ def run_junction_detection(project: str):
         log_file = open(log_path, "w", encoding="utf-8")
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+
+        # Sandboxing: pipeline run may only touch this project's
+        # AutomaticForkDetection dir (plus /tmp and the pipeline venv)
+        pipeline_venv = PipelineConfig().pipeline_venv
+        cmd = sandbox_prefix([fork_detection_dir(pd), Path("/tmp"), pipeline_venv]) + [
+            sys.executable, "-u", "-m", "AnnotationTool.backend.pipeline.pipeline_runner",
+            "--project-dir", str(pd),
+        ]
         try:
             proc = subprocess.Popen(
-                [sys.executable, "-u", "-m", "AnnotationTool.backend.pipeline.pipeline_runner",
-                 "--project-dir", str(pd)],
+                cmd,
                 cwd=str(get_repo_root()),
                 env=env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
+                # Put bwrap + pipeline processes/subprocesses in one process group, so
+                # terminate_process_tree can reliably signal the whole tree via killpg.
+                start_new_session=True,
             )
         finally:
             # Popen duplicates the handle for the child; safe to close our copy.
