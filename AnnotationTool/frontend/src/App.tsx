@@ -37,6 +37,7 @@ import {
   FormControl,
   IconButton,
   InputLabel,
+  LinearProgress,
   List,
   ListItem,
   ListItemButton,
@@ -61,6 +62,7 @@ import {
   getAnnotations,
   getImages,
   getPipelineLog,
+  getPipelineProgress,
   getPipelineStatus,
   getProjectFolderPath,
   getProjects,
@@ -72,7 +74,7 @@ import {
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
 import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus, sortLabelsForDisplay } from "./types";
-import type { ImageAnnotations, ImageMeta, ProjectAnnotations } from "./types";
+import type { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
 import React from "react";
 
 const DRAWER_WIDTH = 270;
@@ -117,6 +119,7 @@ const App = () => {
   const [showShortcuts, setShowShortcuts] = useState(true);
   const [backendRestarting, setBackendRestarting] = useState(false);
   const [backendRestartTimedOut, setBackendRestartTimedOut] = useState(false);
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logContainerRef = useRef<HTMLPreElement | null>(null);
@@ -401,9 +404,13 @@ const App = () => {
   }, []);
 
   // while the selected project's pipeline is running, poll its annotations
-  // so completion/failure is reflected here instead of spinning forever
+  // and stage/image progress so completion/failure is reflected here instead
+  // of spinning forever
   useEffect(() => {
-    if (pipelineStatus !== PipelineStatus.Running || !selectedProject) return;
+    if (pipelineStatus !== PipelineStatus.Running || !selectedProject) {
+      setPipelineProgress(null);
+      return;
+    }
 
     const timer = setInterval(async () => {
       try {
@@ -412,6 +419,11 @@ const App = () => {
         if (latest.junction_detection_pipeline_status === PipelineStatus.Done) {
           loadSelectedProject();
         }
+      } catch {
+        // ignore transient errors, keep showing the last known state
+      }
+      try {
+        setPipelineProgress(await getPipelineProgress(selectedProject));
       } catch {
         // ignore transient errors, keep showing the last known state
       }
@@ -753,6 +765,23 @@ const App = () => {
                         <Typography variant="body2" color="text.secondary" textAlign="center">
                           This project reloads automatically once the pipeline completes.
                         </Typography>
+                        {pipelineProgress?.stage && (
+                          <Box sx={{ width: 260, display: "flex", flexDirection: "column", gap: 0.5 }}>
+                            <Typography variant="body2" color="text.secondary" textAlign="center">
+                              {pipelineProgress.stage === "segmentation" ? "Segmentation" : "Junction detection"}:{" "}
+                              {pipelineProgress.completed} / {pipelineProgress.total} image
+                              {pipelineProgress.total === 1 ? "" : "s"}
+                            </Typography>
+                            <LinearProgress
+                              variant={pipelineProgress.total > 0 ? "determinate" : "indeterminate"}
+                              value={
+                                pipelineProgress.total > 0
+                                  ? (pipelineProgress.completed / pipelineProgress.total) * 100
+                                  : undefined
+                              }
+                            />
+                          </Box>
+                        )}
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button variant="outlined" size="small" onClick={handleOpenLogDialog}>
                             View log

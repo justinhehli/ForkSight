@@ -30,6 +30,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     AUTOMATIC_FORK_DETECTION_DIR_NAME,
     SEGMENTATION_DIR_NAME,
 )
+from AnnotationTool.backend.pipeline.progress_util import write_progress
 
 JUNCTION_LABEL_3WAY = "Replication Fork 100%"
 JUNCTION_LABEL_4WAY = "Reversed Fork 100%"
@@ -60,7 +61,7 @@ def main():
     seg_out_dir.mkdir(parents=True, exist_ok=True)
 
     images = {}
-    for tile in tiles:
+    for i, tile in enumerate(tiles, start=1):
         image_id = tile["id"]
         pred_patches, pred_patch_paths = load_binary_mask_pred_patches(patch_dir, image_id)
 
@@ -98,6 +99,7 @@ def main():
         }
         print(
             f"Processed {tile['display_name']}: {len(points)} junction(s) detected")
+        write_progress(project_dir, "detection", i, len(tiles))
 
     Path(args.results_out).write_text(
         json.dumps({"images": images}, indent=2), encoding="utf-8")

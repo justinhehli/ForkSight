@@ -81,3 +81,9 @@ export interface ProjectCandidate {
   valid: boolean;
   registered: boolean;
 }
+
+export interface PipelineProgress {
+  stage: "segmentation" | "detection" | null;
+  completed: number;
+  total: number;
+}

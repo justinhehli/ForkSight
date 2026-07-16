@@ -1,4 +1,4 @@
-import { ImageAnnotations, ImageMeta, ProjectAnnotations, ProjectCandidate } from "./types";
+import { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations, ProjectCandidate } from "./types";
 
 const BASE = "http://localhost:8000";
 
@@ -92,6 +92,9 @@ export const stopJunctionDetection = (project: string) =>
   );
 
 export const getPipelineStatus = () => request<{ running_project: string | null }>(`${BASE}/pipeline-status`);
+
+export const getPipelineProgress = (project: string) =>
+  request<PipelineProgress>(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-progress`);
 
 export const getPipelineLog = async (project: string): Promise<string> => {
   const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-log`);

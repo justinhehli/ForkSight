@@ -26,6 +26,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_TMP_DIR_PREFIX,
     find_project_tiles,
 )
+from AnnotationTool.backend.pipeline.progress_util import write_progress
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
         manifest_path.write_text(json.dumps(
             {"tiles": tiles_manifest}), encoding="utf-8")
 
+        write_progress(project_dir, "segmentation", 0, len(new_tiles))
         _run_worker("segmentation_worker", [
             "--project-dir", str(project_dir),
             "--manifest", str(manifest_path),
@@ -132,6 +134,7 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
             "--device", str(config.nnunet_device),
         ], config)
 
+        write_progress(project_dir, "detection", 0, len(new_tiles))
         _run_worker("detection_worker", [
             "--project-dir", str(project_dir),
             "--manifest", str(manifest_path),

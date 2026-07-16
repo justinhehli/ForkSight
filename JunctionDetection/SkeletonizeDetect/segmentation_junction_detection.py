@@ -54,7 +54,7 @@ def prune_skeleton(skeleton: np.ndarray, iterations: int = 3) -> np.ndarray:
 
     for _ in range(iterations):
         skel_obj = Skeleton(current_skeleton)
-        stats = summarize(skel_obj)
+        stats = summarize(skel_obj, separator='-')
         _, _, degrees = get_graph_coordinates_degrees(current_skeleton)
 
         # dict track terminal branches attached to each junction
@@ -123,7 +123,7 @@ def _fit_tip_direction(path_coords, sample_length, from_src):
 
 def reconnect_skeleton_gaps(skeleton: np.ndarray) -> np.ndarray:
     skel_obj = Skeleton(skeleton)
-    stats = summarize(skel_obj)
+    stats = summarize(skel_obj, separator='-')
     stats = stats[stats['node-id-src'] != stats['node-id-dst']]
     _, coordinates, degrees = get_graph_coordinates_degrees(skeleton)
 
@@ -196,7 +196,7 @@ def prune_small_cycles(skeleton: np.ndarray) -> np.ndarray:
     """Collapse tiny cycles (perimeter < MIN_SMALL_CYCLE_PRUNE_LENGTH) by
     removing the shortest edge in each, reducing small loops to single paths."""
     skel_obj = Skeleton(skeleton)
-    stats = summarize(skel_obj)
+    stats = summarize(skel_obj, separator='-')
     stats = stats[stats['node-id-src'] != stats['node-id-dst']]
 
     nx_graph = nx.from_scipy_sparse_array(skel_obj.graph)
@@ -249,7 +249,7 @@ def get_graph_coordinates_degrees(skeleton: np.ndarray):
 def filter_junctions_by_length(skeleton: np.ndarray, junction_indices: np.ndarray, degrees: np.ndarray,
                                verbose=False) -> tuple[np.ndarray, np.ndarray]:
     skel_obj = Skeleton(skeleton)
-    skel_stats = summarize(skel_obj)
+    skel_stats = summarize(skel_obj, separator='-')
     skel_stats = skel_stats[skel_stats['node-id-src']
                             != skel_stats['node-id-dst']]
 

@@ -48,6 +48,7 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     save_annotations,
 )
 from AnnotationTool.backend.pipeline.process_util import is_pid_running, terminate_process_tree
+from AnnotationTool.backend.pipeline.progress_util import clear_progress, read_progress
 from AnnotationTool.backend.pipeline.run_pipeline import cleanup_stale_temp_dirs
 from AnnotationTool.backend.util import get_repo_root
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
@@ -431,6 +432,11 @@ def get_pipeline_log(project: str):
                     media_type="text/plain")
 
 
+@app.get("/projects/{project:path}/pipeline-progress")
+def get_pipeline_progress(project: str) -> dict:
+    return read_progress(project_dir(project))
+
+
 def _find_running_pipeline() -> str | None:
     """Return the name of a project with an active pipeline, if any.
     Projects stuck at "Running" whose recorded pipeline_runner.py process is 
@@ -455,6 +461,7 @@ def _find_running_pipeline() -> str | None:
                 )
                 ann["pipeline_pid"] = None
                 save_annotations(pd, ann)
+                clear_progress(pd)
     return None
 
 
@@ -485,6 +492,7 @@ def stop_junction_detection(project: str):
         ann["pipeline_error"] = "Pipeline stopped by user."
         ann["pipeline_pid"] = None
         save_annotations(pd, ann)
+        clear_progress(pd)
 
     return {"status": PipelineStatus.Failed, "project": project}
 
@@ -503,6 +511,7 @@ def run_junction_detection(project: str):
         # and pipeline_runner.py itself updates annotations.json when it's done
         log_path = pipeline_log_path(pd)
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        clear_progress(pd)
         log_file = open(log_path, "w", encoding="utf-8")
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"

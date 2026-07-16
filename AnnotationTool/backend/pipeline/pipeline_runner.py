@@ -18,6 +18,7 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     load_annotations,
     save_annotations,
 )
+from AnnotationTool.backend.pipeline.progress_util import clear_progress
 from AnnotationTool.backend.pipeline.run_pipeline import run_junction_detection_pipeline
 
 logging.basicConfig(
@@ -51,6 +52,8 @@ def main():
         annotations["pipeline_pid"] = None
         save_annotations(project_dir, annotations)
         sys.exit(1)
+    finally:
+        clear_progress(project_dir)
 
 
 if __name__ == "__main__":
