@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from AnnotationTool.backend.bwrap_util import RESTART_EXIT_CODE, is_sandboxed, sandbox_prefix
+from AnnotationTool.backend.bwrap_util import RESTART_EXIT_CODE, is_sandboxed
 from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
     fork_detection_dir,
@@ -48,7 +48,7 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     save_annotations,
 )
 from AnnotationTool.backend.pipeline.process_util import is_pid_running, terminate_process_tree
-from AnnotationTool.backend.pipeline.run_pipeline import PipelineConfig, cleanup_stale_temp_dirs
+from AnnotationTool.backend.pipeline.run_pipeline import cleanup_stale_temp_dirs
 from AnnotationTool.backend.util import get_repo_root
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
 
@@ -507,10 +507,8 @@ def run_junction_detection(project: str):
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
-        # Sandboxing: pipeline run may only touch this project's
-        # AutomaticForkDetection dir (plus /tmp and the pipeline venv)
-        pipeline_venv = PipelineConfig().pipeline_venv
-        cmd = sandbox_prefix([fork_detection_dir(pd), Path("/tmp"), pipeline_venv]) + [
+        # this subprocess inherits the backend's sandbox (bwrap) restrictions
+        cmd = [
             sys.executable, "-u", "-m", "AnnotationTool.backend.pipeline.pipeline_runner",
             "--project-dir", str(pd),
         ]
@@ -521,8 +519,9 @@ def run_junction_detection(project: str):
                 env=env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                # Put bwrap + pipeline processes/subprocesses in one process group, so
-                # terminate_process_tree can reliably signal the whole tree via killpg.
+                # Puts pipeline_runner.py and its own worker subprocesses in one
+                # process group, so terminate_process_tree can reliably signal
+                # the whole tree via killpg.
                 start_new_session=True,
             )
         finally:

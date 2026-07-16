@@ -1,4 +1,4 @@
-"""Bubblewrap (bwrap) sandboxing shared by the backend and the detection pipeline.
+"""Bubblewrap (bwrap) sandboxing for the backend.
 
 `sandbox_prefix` builds a bwrap command prefix that mounts the entire
 filesystem read-only, then re-mounts a given allowlist of directories
@@ -6,11 +6,6 @@ read-write at their own paths. Prepend it to a command's argv to run that
 command unable to delete or modify anything outside the allowlist, while
 still able to read everything (source TIFs, the pipeline venv, the nnU-Net
 model directory, etc.) exactly as before.
-
-Bwrap sandboxes are nestable: a process already running inside one of these
-sandboxes can apply a second, narrower one to a subprocess it spawns (see
-main.py's run_junction_detection, which further restricts the per-project
-pipeline run beyond what the backend itself is allowed).
 """
 import os
 import shutil
