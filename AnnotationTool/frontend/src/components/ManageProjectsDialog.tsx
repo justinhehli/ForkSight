@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -111,46 +112,61 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
             The app will be briefly unavailable while it restarts.
           </Alert>
         )}
+        {loading && (
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1.5, py: 4 }}>
+            <CircularProgress size={20} />
+            <Typography variant="body2" color="text.secondary">
+              Scanning for project directories…
+            </Typography>
+          </Box>
+        )}
         {!loading && candidates.length === 0 && !error && (
           <Typography variant="body2" color="text.secondary">
             No directories found.
           </Typography>
         )}
-        <List dense disablePadding>
-          {candidates.map((c) => (
-            <ListItem key={c.name} disablePadding>
-              <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
-                <Tooltip title={c.valid ? "" : "No LayersData/highmag folder found in this directory"}>
-                  <span>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          size="small"
-                          checked={selected.has(c.name)}
-                          disabled={!c.valid}
-                          onChange={() => toggle(c.name)}
-                        />
-                      }
-                      label={c.name}
-                    />
-                  </span>
-                </Tooltip>
-                <Tooltip title={copiedName === c.name ? "Copied!" : "Copy directory path"}>
-                  <IconButton size="small" sx={{ ml: "auto" }} onClick={() => handleCopyPath(c.name)}>
-                    <ContentCopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </ListItem>
-          ))}
-        </List>
+        {!loading && (
+          <List dense disablePadding>
+            {candidates.map((c) => (
+              <ListItem key={c.name} disablePadding>
+                <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
+                  <Tooltip title={c.valid ? "" : "No LayersData/highmag folder found in this directory"}>
+                    <span>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={selected.has(c.name)}
+                            disabled={!c.valid}
+                            onChange={() => toggle(c.name)}
+                          />
+                        }
+                        label={c.name}
+                      />
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={copiedName === c.name ? "Copied!" : "Copy directory path"}>
+                    <IconButton size="small" sx={{ ml: "auto" }} onClick={() => handleCopyPath(c.name)}>
+                      <ContentCopyIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </ListItem>
+            ))}
+          </List>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={handleSave} disabled={loading || saving}>
-          Save
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={loading || saving}
+          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+        >
+          {saving ? "Saving…" : "Save"}
         </Button>
       </DialogActions>
     </Dialog>

@@ -1184,7 +1184,10 @@ const App = () => {
       <Backdrop
         open={backendRestarting}
         sx={{
-          zIndex: (t) => t.zIndex.drawer + 10,
+          // Must outrank Dialog's zIndex.modal - ManageProjectsDialog (which
+          // triggers this) is still fading out via its own exit transition
+          // when this opens, and would otherwise cover it while both overlap.
+          zIndex: (t) => t.zIndex.modal + 1,
           color: "#fff",
           flexDirection: "column",
           gap: 2,
