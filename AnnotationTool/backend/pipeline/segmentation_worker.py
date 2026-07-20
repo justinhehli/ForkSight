@@ -139,6 +139,7 @@ def main():
                 fname = nnunet_input_patch_filename(tile['id'], idx)
                 TF.to_pil_image(patches[idx]).save(patch_input_dir / fname)
                 input_file_lists.append([str(patch_input_dir / fname)])
+            write_progress(project_dir, "preprocessing", i, len(tiles))
 
         print(f"Running predict_from_files on {len(input_file_lists)} patches")
 

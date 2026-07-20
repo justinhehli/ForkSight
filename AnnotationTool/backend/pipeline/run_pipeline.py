@@ -128,7 +128,7 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
         manifest_path.write_text(json.dumps(
             {"tiles": tiles_manifest}), encoding="utf-8")
 
-        write_progress(project_dir, "segmentation", 0, len(new_tiles))
+        write_progress(project_dir, "preprocessing", 0, len(new_tiles))
         _run_worker("segmentation_worker", [
             "--project-dir", str(project_dir),
             "--manifest", str(manifest_path),

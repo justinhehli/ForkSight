@@ -79,6 +79,12 @@ import React from "react";
 
 const DRAWER_WIDTH = 270;
 
+const PIPELINE_STAGE_LABELS: Record<NonNullable<PipelineProgress["stage"]>, string> = {
+  preprocessing: "Preprocessing",
+  segmentation: "Segmentation",
+  detection: "Junction detection",
+};
+
 const EMPTY_IMG_ANNOTATIONS: ImageAnnotations = { processed: false, points: [] };
 const EMPTY_PROJECT: ProjectAnnotations = {
   junction_detection_pipeline_status: PipelineStatus.Idle,
@@ -768,7 +774,7 @@ const App = () => {
                         {pipelineProgress?.stage && (
                           <Box sx={{ width: 260, display: "flex", flexDirection: "column", gap: 0.5 }}>
                             <Typography variant="body2" color="text.secondary" textAlign="center">
-                              {pipelineProgress.stage === "segmentation" ? "Segmentation" : "Junction detection"}:{" "}
+                              {PIPELINE_STAGE_LABELS[pipelineProgress.stage]}:{" "}
                               {pipelineProgress.completed} / {pipelineProgress.total} image
                               {pipelineProgress.total === 1 ? "" : "s"}
                             </Typography>

@@ -83,7 +83,7 @@ export interface ProjectCandidate {
 }
 
 export interface PipelineProgress {
-  stage: "segmentation" | "detection" | null;
+  stage: "preprocessing" | "segmentation" | "detection" | null;
   completed: number;
   total: number;
 }
