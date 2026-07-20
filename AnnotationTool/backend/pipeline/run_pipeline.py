@@ -47,6 +47,9 @@ class PipelineConfig:
         self.nnunet_model_dir = Path(_get("NNUNET_MODEL_DIR", required=True))
         self.nnunet_device = int(_get("NNUNET_DEVICE", "0"))
 
+        tmp_dir = _get("PIPELINE_TMP_DIR")
+        self.pipeline_tmp_dir = Path(tmp_dir) if tmp_dir else None
+
 
 def _run_worker(module: str, worker_args: list[str], config: PipelineConfig) -> None:
     repo_root = get_repo_root()

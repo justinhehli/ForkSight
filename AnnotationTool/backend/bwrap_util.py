@@ -32,11 +32,16 @@ def _bwrap_executable() -> str:
     return bwrap
 
 
-def sandbox_prefix(read_write_dirs: list[Path]) -> list[str]:
+def sandbox_prefix(
+    read_write_dirs: list[Path], setenv: dict[str, str] | None = None
+) -> list[str]:
     """Bwrap prefix: whole filesystem read-only, `read_write_dirs` read-write.
 
     Each directory in `read_write_dirs` must already exist - bwrap can't bind
     a path that isn't there, so create it beforehand if needed.
+
+    `setenv` is applied inside the sandbox only (e.g. to point TMPDIR at a
+    directory that was just granted read-write access above).
     """
     args = [
         _bwrap_executable(),
@@ -44,11 +49,16 @@ def sandbox_prefix(read_write_dirs: list[Path]) -> list[str]:
         "--dev-bind", "/dev", "/dev",
         "--proc", "/proc",
     ]
+
     for d in read_write_dirs:
         d = Path(d)
         if not d.is_dir():
             raise FileNotFoundError(
                 f"Cannot grant bwrap write access to nonexistent directory: {d}")
         args += ["--bind", str(d), str(d)]
+
+    for key, value in (setenv or {}).items():
+        args += ["--setenv", key, value]
+
     args.append("--")
     return args

@@ -8,17 +8,12 @@ backend. Each (re)launch runs as:
 Read-write is granted only for:
   - PROJECTS_PARENT_DIR/AutomaticForkDetection (the project registry)
   - <project>/AutomaticForkDetection, for every currently *registered* project
-  - /tmp (used by AnnotationTool.backend.pipeline.run_pipeline for scratch dirs)
+  - the pipeline scratch dir (used by AnnotationTool.backend.pipeline.run_pipeline
+    for scratch dirs): PIPELINE_TMP_DIR from .pipeline_env if set, else /tmp.
+    TMPDIR is set to match inside the sandbox, so tempfile.gettempdir() (and
+    hence run_pipeline.py's scratch dirs) resolve there instead of /tmp.
   - the pipeline venv (PIPELINE_VENV in .pipeline_env) - nnU-Net writes a
     trainer-class file into its own site-packages at run time
-
-Note main.py's run_junction_detection applies a second, narrower bwrap sandbox
-around the actual pipeline run, restricting it to just that project's
-AutomaticForkDetection dir + /tmp + the pipeline venv. That only works because
-all three are already read-write here: a nested sandbox can narrow what its
-parent allows, never grant access beyond it - so anything the pipeline needs
-to write has to be read-write at this outer layer too, even though the
-backend process itself never touches the pipeline venv directly.
 
 Everything else on disk - including the project TIFs/mapsxml themselves, and
 the AutomaticForkDetection dir of a not-yet-registered candidate - stays
@@ -68,7 +63,7 @@ def _projects_parent_dir() -> Path:
     return Path(os.environ["PROJECTS_PARENT_DIR"])
 
 
-def _read_write_dirs(projects_parent_dir: Path) -> list[Path]:
+def _read_write_dirs(projects_parent_dir: Path, pipeline_config: PipelineConfig) -> list[Path]:
     global_dir = fork_detection_dir(projects_parent_dir)
     global_dir.mkdir(parents=True, exist_ok=True)
 
@@ -78,13 +73,24 @@ def _read_write_dirs(projects_parent_dir: Path) -> list[Path]:
         d.mkdir(parents=True, exist_ok=True)
         dirs.append(d)
 
-    dirs.append(Path("/tmp"))
-    dirs.append(PipelineConfig().pipeline_venv)
+    dirs.append(pipeline_config.pipeline_venv)
+    if pipeline_config.pipeline_tmp_dir is not None and pipeline_config.pipeline_tmp_dir.is_dir():
+        dirs.append(pipeline_config.pipeline_tmp_dir)
+    else:
+        dirs.append(Path("/tmp"))
     return dirs
 
 
 def _build_command(extra_args: list[str]) -> list[str]:
-    return sandbox_prefix(_read_write_dirs(_projects_parent_dir())) + [
+    pipeline_config = PipelineConfig()
+    setenv = (
+        {"TMPDIR": str(pipeline_config.pipeline_tmp_dir)}
+        if pipeline_config.pipeline_tmp_dir is not None
+        else None
+    )
+    return sandbox_prefix(
+        _read_write_dirs(_projects_parent_dir(), pipeline_config), setenv=setenv
+    ) + [
         sys.executable, "-m", "uvicorn",
         "AnnotationTool.backend.main:app", *extra_args,
     ]
