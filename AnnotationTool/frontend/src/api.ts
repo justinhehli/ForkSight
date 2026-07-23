@@ -1,4 +1,11 @@
-import { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations, ProjectCandidate } from "./types";
+import {
+  ImageAnnotations,
+  ImageMeta,
+  PipelineProgress,
+  PipelineSettings,
+  ProjectAnnotations,
+  ProjectCandidate,
+} from "./types";
 
 const BASE = "http://localhost:8000";
 
@@ -75,11 +82,13 @@ export const exportProjectExcel = async (project: string): Promise<Blob> => {
   return response.blob();
 };
 
-export const runJunctionDetection = (project: string) =>
+export const runJunctionDetection = (project: string, amount?: number) =>
   request<{ status: string; project: string }>(
     `${BASE}/projects/${encodeProjectPath(project)}/run-junction-detection`,
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: amount ?? null }),
     },
   );
 
@@ -127,4 +136,13 @@ export const setRegisteredProjects = (names: string[]) =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ names }),
+  });
+
+export const getPipelineSettings = () => request<PipelineSettings>(`${BASE}/pipeline-settings`);
+
+export const setPipelineSettings = (settings: PipelineSettings) =>
+  request<PipelineSettings>(`${BASE}/pipeline-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
   });

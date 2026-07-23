@@ -37,8 +37,10 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
     fork_detection_dir,
     list_candidate_dirs,
+    load_pipeline_settings,
     load_registered_projects,
     resolve_unc_path,
+    save_pipeline_settings,
     save_registered_projects,
 )
 from AnnotationTool.backend.pipeline.annotations_store import (
@@ -76,6 +78,15 @@ class JunctionType(str, Enum):
     ReversedFork100 = "Reversed Fork 100%"
 
 
+class PipelineMode(str, Enum):
+    # Tiles are randomly sampled and processed one at a time (segment, save,
+    # detect, persist) until enough total junctions have been found.
+    Sequential = "sequential"
+    # Two-stage pipeline: segment a batch of tiles, then detect junctions in
+    # all of them, only persisting once the whole batch is done.
+    Staged = "staged"
+
+
 # Weight that each fork label contributes towards the fork-ratio calculation.
 FORK_WEIGHTS = {
     JunctionType.ReplicationFork50: 0.5,
@@ -110,6 +121,12 @@ class ProjectSelection(BaseModel):
 
 class CreateLabelWrapper(BaseModel):
     label: str
+
+
+class PipelineSettingsModel(BaseModel):
+    pipeline_mode: str
+    sequential_target_junction_count: int
+    staged_sample_percentage: float
 
 
 # concurrency
@@ -196,6 +213,28 @@ def set_project_candidates(selection: ProjectSelection, background_tasks: Backgr
                 parents=True, exist_ok=True)
 
     return list_candidate_dirs(PROJECTS_PARENT_DIR)
+
+
+@app.get("/pipeline-settings")
+def get_pipeline_settings() -> dict:
+    return load_pipeline_settings(PROJECTS_PARENT_DIR)
+
+
+@app.post("/pipeline-settings")
+def set_pipeline_settings(settings: PipelineSettingsModel) -> dict:
+    if settings.pipeline_mode not in {m.value for m in PipelineMode}:
+        raise HTTPException(400, f"Invalid mode '{settings.pipeline_mode}'")
+    if settings.sequential_target_junction_count <= 0:
+        raise HTTPException(
+            400, "sequential_target_junction_count must be positive")
+    if not (0 <= settings.staged_sample_percentage <= 100):
+        raise HTTPException(
+            400, "staged_sample_percentage must be in (0, 100]")
+
+    save_pipeline_settings(
+        PROJECTS_PARENT_DIR, settings.pipeline_mode, settings.sequential_target_junction_count,
+        settings.staged_sample_percentage)
+    return load_pipeline_settings(PROJECTS_PARENT_DIR)
 
 
 @app.get("/project-candidates/{name:path}/path")
@@ -497,8 +536,25 @@ def stop_junction_detection(project: str):
     return {"status": PipelineStatus.Failed, "project": project}
 
 
+def _count_total_junctions(images: dict) -> float:
+    return sum(
+        FORK_WEIGHTS.get(l, 0.0)
+        for img in images.values()
+        for p in img.get("points", [])
+        for l in p.get("labels", [])
+        if l in REPLICATION_FORK_LABELS or l in REVERSED_FORK_LABELS
+    )
+
+
+class RunDetectionRequest(BaseModel):
+    # Meaning depends on the project's pipeline mode:
+    #   sequential -> additional total junctions to find this run
+    #   staged     -> percentage of the project's total tiles to sample in this run
+    amount: float | None = None
+
+
 @app.post("/projects/{project:path}/run-junction-detection")
-def run_junction_detection(project: str):
+def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectionRequest()):
     pd = project_dir(project)
 
     with _pipeline_start_lock:
@@ -506,6 +562,37 @@ def run_junction_detection(project: str):
         if running_project is not None:
             raise HTTPException(
                 409, f"A junction detection pipeline is already running for project '{running_project}'")
+
+        global_settings = load_pipeline_settings(PROJECTS_PARENT_DIR)
+
+        with _get_project_lock(project):
+            ann = load_annotations(pd)
+
+            # mode of project (if set before) trumps global default setting
+            mode = ann.get("pipeline_mode") or global_settings["pipeline_mode"]
+
+            if mode == PipelineMode.Sequential:
+                additional = body.amount if body.amount is not None else global_settings[
+                    "sequential_target_junction_count"]
+                if additional is None or additional <= 0:
+                    raise HTTPException(
+                        400, "amount (additional junctions) must be positive")
+                target_junction_count = int(round(
+                    _count_total_junctions(ann["images"]) + additional))
+                mode_args = ["--target-junction-count",
+                             str(target_junction_count)]
+            else:
+                percentage = body.amount if body.amount is not None else global_settings[
+                    "staged_sample_percentage"]
+                if percentage is None or not (0 < percentage <= 100):
+                    raise HTTPException(
+                        400, "amount (percentage) must be in (0, 100]")
+                mode_args = ["--sample-percentage", str(percentage)]
+
+            ann["pipeline_mode"] = mode
+            ann["junction_detection_pipeline_status"] = PipelineStatus.Running
+            ann["pipeline_error"] = None
+            save_annotations(pd, ann)
 
         # Spawn the pipeline as its own OS process, this request returns immediately
         # and pipeline_runner.py itself updates annotations.json when it's done
@@ -520,6 +607,8 @@ def run_junction_detection(project: str):
         cmd = [
             sys.executable, "-u", "-m", "AnnotationTool.backend.pipeline.pipeline_runner",
             "--project-dir", str(pd),
+            "--mode", mode,
+            *mode_args,
         ]
         try:
             proc = subprocess.Popen(
@@ -539,8 +628,6 @@ def run_junction_detection(project: str):
 
         with _get_project_lock(project):
             ann = load_annotations(pd)
-            ann["junction_detection_pipeline_status"] = PipelineStatus.Running
-            ann["pipeline_error"] = None
             ann["pipeline_pid"] = proc.pid
             save_annotations(pd, ann)
 

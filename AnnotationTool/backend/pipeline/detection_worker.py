@@ -36,6 +36,11 @@ from AnnotationTool.backend.pipeline.progress_util import write_progress
 JUNCTION_LABEL_3WAY = "Replication Fork 100%"
 JUNCTION_LABEL_4WAY = "Reversed Fork 100%"
 
+# pre-defined labels that can be set by human annotator in the UI
+# and count 0.5 to the sum of detected forks/junctions 
+JUNCTION_LABEL_3WAY_50 = "Replication Fork 50%"
+JUNCTION_LABEL_4WAY_50 = "Reversed Fork 50%"
+
 
 def get_junction_points(stitched, display_name: str) -> list[dict]:
     try:

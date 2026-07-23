@@ -38,6 +38,12 @@ PIPELINE_TMP_DIR_PREFIX = "forksight_pipeline_"
 SEGMENTATION_TMP_DIR_PREFIX = "forksight_seg_"
 
 
+DEFAULT_TARGET_JUNCTION_COUNT = int(
+    _get_env("DEFAULT_TARGET_JUNCTION_COUNT", "100"))
+DEFAULT_STAGED_SAMPLE_PERCENTAGE = float(
+    _get_env("DEFAULT_STAGED_SAMPLE_PERCENTAGE", "10"))
+
+
 def is_valid_project_dir(path: Path) -> bool:
     return any(p.is_file() for p in path.glob("*.mapsxml")) and (path / "LayersData" / "highmag").is_dir()
 
@@ -50,19 +56,51 @@ def _registry_path(parent_dir: Path) -> Path:
     return fork_detection_dir(parent_dir) / REGISTRY_FILENAME
 
 
-def load_registered_projects(parent_dir: Path) -> set[str]:
+def _load_registry(parent_dir: Path) -> dict:
     p = _registry_path(parent_dir)
     if not p.is_file():
-        return set()
-    data = json.loads(p.read_text(encoding="utf-8"))
-    return set(data.get("projects", []))
+        return {}
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _save_registry(parent_dir: Path, data: dict) -> None:
+    p = _registry_path(parent_dir)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def load_registered_projects(parent_dir: Path) -> set[str]:
+    return set(_load_registry(parent_dir).get("projects", []))
 
 
 def save_registered_projects(parent_dir: Path, names: list[str]) -> None:
-    _registry_path(parent_dir).write_text(
-        json.dumps({"projects": sorted(set(names))}, indent=2),
-        encoding="utf-8",
-    )
+    data = _load_registry(parent_dir)
+    data["projects"] = sorted(set(names))
+    _save_registry(parent_dir, data)
+
+
+def load_pipeline_settings(parent_dir: Path) -> dict:
+    """Keys match the registry JSON's own field names, with defaults filled
+    in for any that are missing."""
+    data = _load_registry(parent_dir)
+    return {
+        "pipeline_mode": data.get("pipeline_mode", "sequential"),
+        "sequential_target_junction_count": data.get(
+            "sequential_target_junction_count", DEFAULT_TARGET_JUNCTION_COUNT),
+        "staged_sample_percentage": data.get(
+            "staged_sample_percentage", DEFAULT_STAGED_SAMPLE_PERCENTAGE),
+    }
+
+
+def save_pipeline_settings(
+    parent_dir: Path, pipeline_mode: str, sequential_target_junction_count: int,
+    staged_sample_percentage: float,
+) -> None:
+    data = _load_registry(parent_dir)
+    data["pipeline_mode"] = pipeline_mode
+    data["sequential_target_junction_count"] = sequential_target_junction_count
+    data["staged_sample_percentage"] = staged_sample_percentage
+    _save_registry(parent_dir, data)
 
 
 def find_candidate_project_dirs(parent_dir: Path) -> list[Path]:

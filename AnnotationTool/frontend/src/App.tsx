@@ -18,6 +18,7 @@ import {
   ListAlt as ListAltIcon,
   PlayArrow as PlayArrowIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
+  Settings as SettingsIcon,
   TaskAlt as TaskAltIcon,
 } from "@mui/icons-material";
 import {
@@ -71,8 +72,10 @@ import {
   saveImageAnnotations,
   stopJunctionDetection,
 } from "./api";
+import AdditionalDetectionDialog from "./components/AdditionalDetectionDialog";
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
+import PipelineSettingsDialog from "./components/PipelineSettingsDialog";
 import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus, sortLabelsForDisplay } from "./types";
 import type { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
 import React from "react";
@@ -83,6 +86,7 @@ const PIPELINE_STAGE_LABELS: Record<NonNullable<PipelineProgress["stage"]>, stri
   preprocessing: "Preprocessing",
   segmentation: "Segmentation",
   detection: "Junction detection",
+  sequential: "Junctions found",
 };
 
 const EMPTY_IMG_ANNOTATIONS: ImageAnnotations = { processed: false, points: [] };
@@ -117,6 +121,8 @@ const App = () => {
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
+  const [pipelineSettingsOpen, setPipelineSettingsOpen] = useState(false);
+  const [additionalRunOpen, setAdditionalRunOpen] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logText, setLogText] = useState("");
@@ -366,14 +372,19 @@ const App = () => {
     }
   };
 
-  const handleRunJunctionDetection = async () => {
+  const handleRunJunctionDetection = async (amount?: number) => {
     setAnnotations((prev) => ({ ...prev, junction_detection_pipeline_status: PipelineStatus.Running }));
     try {
-      await runJunctionDetection(selectedProject);
+      await runJunctionDetection(selectedProject, amount);
     } catch (e) {
       setError(String(e));
       loadSelectedProject();
     }
+  };
+
+  const handleConfirmAdditionalRun = (amount: number) => {
+    setAdditionalRunOpen(false);
+    handleRunJunctionDetection(amount);
   };
 
   const handleStopJunctionDetection = async () => {
@@ -680,6 +691,20 @@ const App = () => {
               </MenuItem>
             </Menu>
 
+            <Tooltip title="Run additional fork detection">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setAdditionalRunOpen(true)}
+                  disabled={
+                    !!error || !selectedProject || pipelineStatus !== PipelineStatus.Done || blockedByOtherProject
+                  }
+                >
+                  <PlayArrowIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+
             <Tooltip title="Project overview">
               <span>
                 <IconButton
@@ -690,6 +715,12 @@ const App = () => {
                   <BarChartIcon fontSize="small" />
                 </IconButton>
               </span>
+            </Tooltip>
+
+            <Tooltip title="Settings">
+              <IconButton size="small" onClick={() => setPipelineSettingsOpen(true)}>
+                <SettingsIcon fontSize="small" />
+              </IconButton>
             </Tooltip>
 
             <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
@@ -755,7 +786,7 @@ const App = () => {
                           variant="contained"
                           size="large"
                           startIcon={<PlayArrowIcon />}
-                          onClick={handleRunJunctionDetection}
+                          onClick={() => handleRunJunctionDetection()}
                           disabled={blockedByOtherProject}
                         >
                           Run fork detection
@@ -775,8 +806,10 @@ const App = () => {
                           <Box sx={{ width: 260, display: "flex", flexDirection: "column", gap: 0.5 }}>
                             <Typography variant="body2" color="text.secondary" textAlign="center">
                               {PIPELINE_STAGE_LABELS[pipelineProgress.stage]}:{" "}
-                              {pipelineProgress.completed} / {pipelineProgress.total} image
-                              {pipelineProgress.total === 1 ? "" : "s"}
+                              {pipelineProgress.completed} / {pipelineProgress.total}
+                              {pipelineProgress.stage === "sequential"
+                                ? " junctions"
+                                : ` image${pipelineProgress.total === 1 ? "" : "s"}`}
                             </Typography>
                             <LinearProgress
                               variant={pipelineProgress.total > 0 ? "determinate" : "indeterminate"}
@@ -818,7 +851,7 @@ const App = () => {
                             size="large"
                             color="error"
                             startIcon={<PlayArrowIcon />}
-                            onClick={handleRunJunctionDetection}
+                            onClick={() => setAdditionalRunOpen(true)}
                             disabled={blockedByOtherProject}
                           >
                             Re-run fork detection
@@ -1174,6 +1207,13 @@ const App = () => {
           </Box>
         </DialogContent>
       </Dialog>
+      <PipelineSettingsDialog open={pipelineSettingsOpen} onClose={() => setPipelineSettingsOpen(false)} />
+      <AdditionalDetectionDialog
+        open={additionalRunOpen}
+        mode={annotations.pipeline_mode}
+        onClose={() => setAdditionalRunOpen(false)}
+        onConfirm={handleConfirmAdditionalRun}
+      />
       <ManageProjectsDialog
         open={manageProjectsOpen}
         onClose={() => setManageProjectsOpen(false)}

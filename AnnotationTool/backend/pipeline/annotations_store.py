@@ -28,10 +28,13 @@ def load_annotations(project_dir: Path) -> dict:
             "junction_detection_pipeline_status": PipelineStatus.Idle,
             "pipeline_error": None,
             "pipeline_pid": None,
+            "pipeline_mode": None,
             "additional_labels": [],
             "images": {},
         }
+    
     data = json.loads(p.read_text(encoding="utf-8"))
+    data.setdefault("pipeline_mode", None)
     data.setdefault("additional_labels", [])
     return data
 

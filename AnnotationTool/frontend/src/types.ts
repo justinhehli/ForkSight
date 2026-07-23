@@ -51,6 +51,17 @@ export enum PipelineStatus {
   Failed = "Failed",
 }
 
+export enum PipelineMode {
+  Sequential = "sequential",
+  Staged = "staged",
+}
+
+export interface PipelineSettings {
+  pipeline_mode: PipelineMode;
+  sequential_target_junction_count: number;
+  staged_sample_percentage: number;
+}
+
 export interface Point {
   id: string;
   x: number;
@@ -66,6 +77,7 @@ export interface ImageAnnotations {
 export interface ProjectAnnotations {
   junction_detection_pipeline_status: PipelineStatus;
   pipeline_error?: string | null;
+  pipeline_mode?: PipelineMode | null;
   additional_labels: string[];
   images: Record<string, ImageAnnotations>;
 }
@@ -83,7 +95,7 @@ export interface ProjectCandidate {
 }
 
 export interface PipelineProgress {
-  stage: "preprocessing" | "segmentation" | "detection" | null;
+  stage: "preprocessing" | "segmentation" | "detection" | "sequential" | null;
   completed: number;
   total: number;
 }

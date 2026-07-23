@@ -1,14 +1,24 @@
 """Orchestrates the automatic junction-detection pipeline for a single project
 
-Actual image processing (segmentation, postprocessing, junction detection) 
-happens in separate subprocesses (segmentation_worker.py, detection_worker.py), 
-run inside a dedicated pipeline venv. manifest.json/results.json handoff
-on disk is the only thing exchanged between this orchestrator and the two subprocesses.
+Two interchangeable pipeline modes are implemented here (see main.py's
+PipelineMode for how the active one is configured, and
+discovery.py's load_pipeline_settings/save_pipeline_settings for where that
+choice is persisted):
+  - staged (run_junction_detection_pipeline): segments a random subsample of
+    a project's tiles, then detects junctions in all of them - actual image
+    processing happens in separate subprocesses (segmentation_worker.py,
+    detection_worker.py), with manifest.json/results.json handoff on disk.
+  - sequential (run_sequential_junction_detection_pipeline): randomly samples
+    and processes tiles one at a time until enough junctions have been found
+    in total, delegating to a single sequential_worker.py subprocess.
+
+All subprocesses run inside a dedicated pipeline venv.
 """
 
 import json
 import logging
 import os
+import random
 import shutil
 import subprocess
 import tempfile
@@ -20,6 +30,10 @@ from dotenv import dotenv_values
 from AnnotationTool.backend.util import get_repo_root, venv_python_executable
 from Segmentation.PreProcessing.General.tile_naming_util import get_display_name
 
+from AnnotationTool.backend.pipeline.annotations_store import (
+    load_annotations,
+    save_annotations,
+)
 from AnnotationTool.backend.pipeline.discovery import (
     PIPELINE_TMP_DIR_PREFIX,
     SEGMENTATION_PATCHES_DIR_NAME,
@@ -89,27 +103,35 @@ def cleanup_stale_temp_dirs() -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
-def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dict:
-    """Run the pipeline for all project tiles not yet present in annotations.
+def _sample_tiles(candidate_tiles: list[Path], sample_percentage: float, total_tile_count: int) -> list[Path]:
+    if not candidate_tiles or sample_percentage <= 0 or total_tile_count <= 0:
+        return []
 
-    Mutates and returns `annotations["images"]` in place; does not persist it
-    to disk itself - the caller owns the read-modify-write + status handling
-    around the annotations.json file.
-    """
+    sample_size = round(total_tile_count * sample_percentage / 100)
+    sample_size = max(1, min(sample_size, len(candidate_tiles)))
+    return random.sample(candidate_tiles, sample_size)
+
+
+def run_staged_junction_detection_pipeline(project_dir: Path, sample_percentage: float = 100) -> None:
+    """segment a random subsample of not-yet-processed tiles, THEN detect junctions in all of them """
     project_dir = Path(project_dir)
     config = PipelineConfig()
 
+    annotations = load_annotations(project_dir)
     known_source_tifs = {img["source_tif"]
                          for img in annotations["images"].values()}
-    new_tiles = [
-        t for t in find_project_tiles(project_dir)
+    all_tiles = find_project_tiles(project_dir)
+    candidate_tiles = [
+        t for t in all_tiles
         if t.relative_to(project_dir).as_posix() not in known_source_tifs
     ]
-    logger.info("Found %d new tile(s) to process in %s",
-                len(new_tiles), project_dir)
+    new_tiles = _sample_tiles(
+        candidate_tiles, sample_percentage, len(all_tiles))
+    logger.info("Found %d new tile(s) out of %d total, sampling %d (%.0f%% of total) to process in %s",
+                len(candidate_tiles), len(all_tiles), len(new_tiles), sample_percentage, project_dir)
     if not new_tiles:
         logger.info("Nothing to do.")
-        return annotations
+        return
 
     tiles_manifest = [
         {
@@ -148,6 +170,22 @@ def run_junction_detection_pipeline(project_dir: Path, annotations: dict) -> dic
         results = json.loads(results_path.read_text(encoding="utf-8"))
         annotations["images"].update(results["images"])
 
+    save_annotations(project_dir, annotations)
     logger.info("Pipeline stages complete; %d image(s) updated",
                 len(results["images"]))
-    return annotations
+
+
+def run_sequential_junction_detection_pipeline(project_dir: Path, target_junction_count: int) -> None:
+    """ tiles are randomly sampled and processed one at a time (segment, save the mask, detect junctions, persist)
+    until `target_junction_count` total junction have been found or tiles run out
+    """
+    project_dir = Path(project_dir)
+    config = PipelineConfig()
+
+    write_progress(project_dir, "sequential", 0, target_junction_count)
+    _run_worker("sequential_worker", [
+        "--project-dir", str(project_dir),
+        "--model-dir", str(config.nnunet_model_dir),
+        "--device", str(config.nnunet_device),
+        "--target-junction-count", str(target_junction_count),
+    ], config)
