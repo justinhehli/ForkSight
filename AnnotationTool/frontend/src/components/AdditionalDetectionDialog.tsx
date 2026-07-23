@@ -44,13 +44,13 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
   const valid = typeof amount === "number" && amount > 0 && (!isStaged || amount <= 100);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Run Additional Automatic Fork Detection</DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Run additional automatic fork detection</DialogTitle>
       <DialogContent dividers>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
           {isStaged
-            ? "Detect junctions in another random sample of tiles."
-            : "Keep sampling new tiles until a pre-defined number of additional junctions have been found."}
+            ? "Detect forks in another random subsample of tiles."
+            : "Detect another pre-defined number of additional forks."}
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -64,10 +64,9 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
         ) : (
           <TextField
             autoFocus
-            label={isStaged ? "Percentage of total images to process" : "Additional junctions to find"}
+            label={isStaged ? "Percentage of total tiles to process" : "Number of additional forks to find"}
             type="number"
             size="small"
-            fullWidth
             value={amount}
             onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
             error={amount !== "" && !valid}
