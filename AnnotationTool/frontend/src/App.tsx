@@ -691,7 +691,7 @@ const App = () => {
               </MenuItem>
             </Menu>
 
-            <Tooltip title="Run additional fork detection">
+            <Tooltip title="Run additional automatic fork detection">
               <span>
                 <IconButton
                   size="small"
@@ -807,8 +807,8 @@ const App = () => {
                         {pipelineProgress?.stage && (
                           <Box sx={{ width: 260, display: "flex", flexDirection: "column", gap: 0.5 }}>
                             <Typography variant="body2" color="text.secondary" textAlign="center">
-                              {PIPELINE_STAGE_LABELS[pipelineProgress.stage]}:{" "}
-                              {pipelineProgress.completed} / {pipelineProgress.total}
+                              {PIPELINE_STAGE_LABELS[pipelineProgress.stage]}: {pipelineProgress.completed} /{" "}
+                              {pipelineProgress.total}
                               {pipelineProgress.stage === "sequential"
                                 ? " junctions"
                                 : ` image${pipelineProgress.total === 1 ? "" : "s"}`}

@@ -45,12 +45,12 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Run additional fork detection</DialogTitle>
+      <DialogTitle>Run Additional Automatic Fork Detection</DialogTitle>
       <DialogContent dividers>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
           {isStaged
-            ? "Segment and detect junctions in another random sample of not-yet-processed tiles. Already-processed tiles are always excluded."
-            : "Keep sampling new tiles one at a time (excluding already-processed ones) until this many additional junctions have been found."}
+            ? "Detect junctions in another random sample of tiles."
+            : "Keep sampling new tiles until a pre-defined number of additional junctions have been found."}
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -64,7 +64,7 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
         ) : (
           <TextField
             autoFocus
-            label={isStaged ? "Percentage of total images" : "Additional junctions to find"}
+            label={isStaged ? "Percentage of total images to process" : "Additional junctions to find"}
             type="number"
             size="small"
             fullWidth
