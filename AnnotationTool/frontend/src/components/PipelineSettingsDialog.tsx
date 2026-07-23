@@ -10,6 +10,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  InputAdornment,
   Radio,
   RadioGroup,
   TextField,
@@ -64,12 +65,12 @@ const PipelineSettingsDialog = ({ open, onClose }: Props) => {
       !(settings.staged_sample_percentage > 0 && settings.staged_sample_percentage <= 100));
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Fork detection settings</DialogTitle>
       <DialogContent dividers>
-        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-          Choose how the automatic fork detection pipeline processes a project's tiles. Applies the
-          next time detection is run, for any project.
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+          Choose how the automatic fork detection pipeline processes project tiles. Applies the next time detection is
+          run.
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -82,65 +83,50 @@ const PipelineSettingsDialog = ({ open, onClose }: Props) => {
           </Box>
         )}
         {!loading && settings && (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <FormControl>
-              <RadioGroup
-                value={settings.pipeline_mode}
-                onChange={(e) => setSettings({ ...settings, pipeline_mode: e.target.value as PipelineMode })}
-              >
-                <FormControlLabel
-                  value={PipelineMode.Sequential}
-                  control={<Radio size="small" />}
-                  label="Sequential"
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 1 }}>
-                  Tiles are randomly sampled and processed one at a time (segmented, detected,
-                  saved) until enough total junctions have been found.
+          <FormControl fullWidth>
+            <RadioGroup
+              value={settings.pipeline_mode}
+              onChange={(e) => setSettings({ ...settings, pipeline_mode: e.target.value as PipelineMode })}
+            >
+              <Box sx={{ mb: 1 }}>
+                <FormControlLabel value={PipelineMode.Sequential} control={<Radio size="small" />} label="Sequential" />
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mb: 1.5 }}>
+                  Tiles are randomly sampled and processed sequentially one at a time until a pre-defined number total
+                  forks have been found.
                 </Typography>
-                <FormControlLabel
-                  value={PipelineMode.Staged}
-                  control={<Radio size="small" />}
-                  label="Staged"
+                <TextField
+                  label="Target fork number to be found"
+                  type="number"
+                  size="small"
+                  sx={{ ml: 4, width: 280 }}
+                  value={settings.sequential_target_junction_count}
+                  onChange={(e) =>
+                    setSettings({ ...settings, sequential_target_junction_count: Number(e.target.value) })
+                  }
+                  error={!(settings.sequential_target_junction_count > 0)}
+                  inputProps={{ min: 1 }}
                 />
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
-                  A random subsample of tiles is fully segmented first, then junctions are detected
-                  in all of them.
+              </Box>
+
+              <Box>
+                <FormControlLabel value={PipelineMode.Staged} control={<Radio size="small" />} label="Staged" />
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mb: 1.5 }}>
+                  A random subsample of tiles is processed in full, regardless of the number of found forks.
                 </Typography>
-              </RadioGroup>
-            </FormControl>
-
-            {settings.pipeline_mode === PipelineMode.Sequential && (
-              <TextField
-                label="Target total junction count"
-                type="number"
-                size="small"
-                value={settings.sequential_target_junction_count}
-                onChange={(e) =>
-                  setSettings({ ...settings, sequential_target_junction_count: Number(e.target.value) })
-                }
-                error={!(settings.sequential_target_junction_count > 0)}
-                helperText="Stop once this many replication + reversed forks have been found in total"
-                inputProps={{ min: 1 }}
-              />
-            )}
-
-            {settings.pipeline_mode === PipelineMode.Staged && (
-              <TextField
-                label="Tile sample percentage"
-                type="number"
-                size="small"
-                value={settings.staged_sample_percentage}
-                onChange={(e) =>
-                  setSettings({ ...settings, staged_sample_percentage: Number(e.target.value) })
-                }
-                error={
-                  !(settings.staged_sample_percentage > 0 && settings.staged_sample_percentage <= 100)
-                }
-                helperText="Percentage of not-yet-processed tiles to randomly sample and process"
-                inputProps={{ min: 1, max: 100 }}
-              />
-            )}
-          </Box>
+                <TextField
+                  label="Subsample size (percentage of all tiles)"
+                  type="number"
+                  size="small"
+                  sx={{ ml: 4, width: 280 }}
+                  value={settings.staged_sample_percentage}
+                  onChange={(e) => setSettings({ ...settings, staged_sample_percentage: Number(e.target.value) })}
+                  error={!(settings.staged_sample_percentage > 0 && settings.staged_sample_percentage <= 100)}
+                  inputProps={{ min: 1, max: 100 }}
+                  InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                />
+              </Box>
+            </RadioGroup>
+          </FormControl>
         )}
       </DialogContent>
       <DialogActions>

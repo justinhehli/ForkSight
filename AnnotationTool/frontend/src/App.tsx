@@ -717,6 +717,8 @@ const App = () => {
               </span>
             </Tooltip>
 
+            <Divider orientation="vertical" flexItem sx={{ my: 1 }} />
+
             <Tooltip title="Settings">
               <IconButton size="small" onClick={() => setPipelineSettingsOpen(true)}>
                 <SettingsIcon fontSize="small" />
