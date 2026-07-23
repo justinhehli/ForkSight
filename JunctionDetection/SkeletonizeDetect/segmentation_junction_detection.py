@@ -471,15 +471,32 @@ def detect_junctions_in_segmentation_mask(
     Returns (coords_3way, coords_4way, skeleton) where each coords array is
     (N, 2) in (x, y) image coordinates.
     '''
+    empty_coords = np.empty((0, 2))
+
     segmentation_mask = remove_small_bbox_objects(segmentation_mask)
     skeleton = skeletonize_mask(segmentation_mask)
+
+    # nothing to detect on a blank (background-only) mask / empty skeleton
+    if not skeleton.any():
+        return empty_coords, empty_coords, skeleton
+
     skeleton = prune_skeleton(skeleton)
+
+    if not skeleton.any():
+        return empty_coords, empty_coords, skeleton
+
     skeleton = reconnect_skeleton_gaps(skeleton)
     skeleton = prune_small_cycles(skeleton)
+
+    if not skeleton.any():
+        return empty_coords, empty_coords, skeleton
 
     _, _, degrees = get_graph_coordinates_degrees(skeleton)
 
     junction_indices = np.where(degrees > 2)[0]
+    if len(junction_indices) == 0:
+        return empty_coords, empty_coords, skeleton
+
     coords_3way, coords_4way = filter_junctions_by_length(
         skeleton, junction_indices, degrees, verbose=verbose)
 

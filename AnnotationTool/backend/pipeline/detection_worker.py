@@ -12,6 +12,7 @@ Usage:
 
 import argparse
 import json
+import traceback
 import uuid
 from pathlib import Path
 
@@ -34,6 +35,25 @@ from AnnotationTool.backend.pipeline.progress_util import write_progress
 
 JUNCTION_LABEL_3WAY = "Replication Fork 100%"
 JUNCTION_LABEL_4WAY = "Reversed Fork 100%"
+
+
+def get_junction_points(stitched, display_name: str) -> list[dict]:
+    try:
+        coords_3way, coords_4way, _ = detect_junctions_in_segmentation_mask(
+            stitched)
+    except Exception:
+        print(f"Junction detection failed for {display_name}; "
+              f"assuming no junctions were found:\n{traceback.format_exc()}")
+        coords_3way, coords_4way = np.empty((0, 2)), np.empty((0, 2))
+
+    points = []
+    for x, y in coords_3way:
+        points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
+                       "y": round(float(y)), "labels": [JUNCTION_LABEL_3WAY]})
+    for x, y in coords_4way:
+        points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
+                       "y": round(float(y)), "labels": [JUNCTION_LABEL_4WAY]})
+    return points
 
 
 def main():
@@ -63,7 +83,8 @@ def main():
     images = {}
     for i, tile in enumerate(tiles, start=1):
         image_id = tile["id"]
-        pred_patches, pred_patch_paths = load_binary_mask_pred_patches(patch_dir, image_id)
+        pred_patches, pred_patch_paths = load_binary_mask_pred_patches(
+            patch_dir, image_id)
 
         stitched, _ = postprocess_segmentation_masks(
             pred_patches, grid_size=GRID_SIZE,
@@ -80,16 +101,7 @@ def main():
         for p in pred_patch_paths:
             p.unlink(missing_ok=True)
 
-        coords_3way, coords_4way, _ = detect_junctions_in_segmentation_mask(
-            stitched)
-
-        points = []
-        for x, y in coords_3way:
-            points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
-                           "y": round(float(y)), "labels": [JUNCTION_LABEL_3WAY]})
-        for x, y in coords_4way:
-            points.append({"id": str(uuid.uuid4()), "x": round(float(x)),
-                           "y": round(float(y)), "labels": [JUNCTION_LABEL_4WAY]})
+        points = get_junction_points(stitched, tile["display_name"])
 
         images[image_id] = {
             "source_tif": tile["source_tif"],
