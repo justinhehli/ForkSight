@@ -26,6 +26,8 @@ const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+export const getEnvironment = () => request<{ environment: "PROD" | "DEV" | "TRAIN" }>(`${BASE}/environment`);
+
 export const getProjects = () => request<string[]>(`${BASE}/projects`);
 
 // liveness check used while waiting for the backend to restart

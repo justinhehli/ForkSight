@@ -43,24 +43,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from AnnotationTool.backend.bwrap_util import (
     RESTART_EXIT_CODE,
     SANDBOX_ENV_VAR,
     sandbox_prefix,
 )
 from AnnotationTool.backend.pipeline.discovery import (
+    IS_TRAIN_ENV,
+    PROJECTS_PARENT_DIR,
     fork_detection_dir,
     load_registered_projects,
 )
 from AnnotationTool.backend.pipeline.run_pipeline import PipelineConfig
-from AnnotationTool.backend.util import get_repo_root
-
-
-def _projects_parent_dir() -> Path:
-    load_dotenv(get_repo_root() / "AnnotationTool" / ".annotation_tool_env")
-    return Path(os.environ["PROJECTS_PARENT_DIR"])
 
 
 def _read_write_dirs(projects_parent_dir: Path, pipeline_config: PipelineConfig) -> list[Path]:
@@ -68,10 +62,13 @@ def _read_write_dirs(projects_parent_dir: Path, pipeline_config: PipelineConfig)
     global_dir.mkdir(parents=True, exist_ok=True)
 
     dirs = [global_dir]
-    for name in load_registered_projects(projects_parent_dir):
-        d = fork_detection_dir(projects_parent_dir / name)
-        d.mkdir(parents=True, exist_ok=True)
-        dirs.append(d)
+    if not IS_TRAIN_ENV:
+        # In TRAIN mode, projects_parent_dir is itself the only "project" and
+        # global_dir above already covers its AutomaticForkDetection output.
+        for name in load_registered_projects(projects_parent_dir):
+            d = fork_detection_dir(projects_parent_dir / name)
+            d.mkdir(parents=True, exist_ok=True)
+            dirs.append(d)
 
     dirs.append(pipeline_config.pipeline_venv)
     if pipeline_config.pipeline_tmp_dir is not None and pipeline_config.pipeline_tmp_dir.is_dir():
@@ -89,7 +86,7 @@ def _build_command(extra_args: list[str]) -> list[str]:
         else None
     )
     return sandbox_prefix(
-        _read_write_dirs(_projects_parent_dir(), pipeline_config), setenv=setenv
+        _read_write_dirs(PROJECTS_PARENT_DIR, pipeline_config), setenv=setenv
     ) + [
         sys.executable, "-m", "uvicorn",
         "AnnotationTool.backend.main:app", *extra_args,

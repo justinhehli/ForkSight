@@ -26,7 +26,6 @@ REPO_ROOT = _find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -34,7 +33,11 @@ from pydantic import BaseModel
 
 from AnnotationTool.backend.bwrap_util import RESTART_EXIT_CODE, is_sandboxed
 from AnnotationTool.backend.pipeline.discovery import (
+    IS_TRAIN_ENV,
+    PROJECTS_PARENT_DIR,
     SEGMENTATION_DIR_NAME,
+    TOOL_ENVIRONMENT,
+    TRAIN_PROJECT_NAME,
     fork_detection_dir,
     list_candidate_dirs,
     load_pipeline_settings,
@@ -54,9 +57,6 @@ from AnnotationTool.backend.pipeline.progress_util import clear_progress, read_p
 from AnnotationTool.backend.pipeline.run_pipeline import cleanup_stale_temp_dirs
 from AnnotationTool.backend.util import get_repo_root
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
-
-load_dotenv(get_repo_root() / "AnnotationTool" / ".annotation_tool_env")
-PROJECTS_PARENT_DIR = Path(os.environ["PROJECTS_PARENT_DIR"])
 
 app = FastAPI(title="ForkSight Annotator API")
 
@@ -151,6 +151,11 @@ def _get_project_lock(project: str) -> threading.Lock:
 # ====================
 
 def project_dir(project: str) -> Path:
+    if IS_TRAIN_ENV:
+        if project != TRAIN_PROJECT_NAME or not PROJECTS_PARENT_DIR.is_dir():
+            raise HTTPException(404, f"Project '{project}' not found")
+        return PROJECTS_PARENT_DIR
+
     p = PROJECTS_PARENT_DIR / project
     registered = load_registered_projects(PROJECTS_PARENT_DIR)
     if project not in registered or not p.is_dir():
@@ -162,17 +167,27 @@ def project_dir(project: str) -> Path:
 # ====================
 
 
+@app.get("/environment")
+def get_environment() -> dict:
+    return {"environment": TOOL_ENVIRONMENT.value}
+
+
 @app.get("/projects")
 def list_projects() -> list[str]:
     if not PROJECTS_PARENT_DIR.exists():
         raise HTTPException(
             500, f"PROJECTS_PARENT_DIR does not exist: {PROJECTS_PARENT_DIR}")
+    if IS_TRAIN_ENV:
+        return [TRAIN_PROJECT_NAME]
     registered = load_registered_projects(PROJECTS_PARENT_DIR)
     return sorted(name for name in registered if (PROJECTS_PARENT_DIR / name).is_dir())
 
 
 @app.get("/project-candidates")
 def get_project_candidates() -> list[dict]:
+    if IS_TRAIN_ENV:
+        raise HTTPException(
+            400, "Project discovery is not applicable in the TRAIN environment")
     if not PROJECTS_PARENT_DIR.exists():
         raise HTTPException(
             500, f"PROJECTS_PARENT_DIR does not exist: {PROJECTS_PARENT_DIR}")
@@ -188,6 +203,10 @@ def _exit_for_restart(delay: float = 0.5) -> None:
 
 @app.post("/project-candidates")
 def set_project_candidates(selection: ProjectSelection, background_tasks: BackgroundTasks) -> list[dict]:
+    if IS_TRAIN_ENV:
+        raise HTTPException(
+            400, "Project registration is not applicable in the TRAIN environment")
+
     previously_registered = load_registered_projects(PROJECTS_PARENT_DIR)
     save_registered_projects(PROJECTS_PARENT_DIR, selection.names)
     newly_registered = set(selection.names) - previously_registered
@@ -239,6 +258,11 @@ def set_pipeline_settings(settings: PipelineSettingsModel) -> dict:
 
 @app.get("/project-candidates/{name:path}/path")
 def get_project_candidate_path(name: str):
+    if IS_TRAIN_ENV:
+        if name != TRAIN_PROJECT_NAME or not PROJECTS_PARENT_DIR.is_dir():
+            raise HTTPException(404, "Directory not found")
+        return {"path": str(resolve_unc_path(PROJECTS_PARENT_DIR.resolve()))}
+
     target = (PROJECTS_PARENT_DIR / name).resolve()
     try:
         target.relative_to(PROJECTS_PARENT_DIR.resolve())

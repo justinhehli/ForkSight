@@ -61,6 +61,7 @@ import {
   exportProject,
   exportProjectExcel,
   getAnnotations,
+  getEnvironment,
   getImages,
   getPipelineLog,
   getPipelineProgress,
@@ -112,6 +113,7 @@ const App = () => {
 
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
+  const [isTrainEnv, setIsTrainEnv] = useState(false);
   const [images, setImages] = useState<ImageMeta[]>([]);
   const [imageIdx, setImageIdx] = useState(0);
   const [annotations, setAnnotations] = useState<ProjectAnnotations>(EMPTY_PROJECT);
@@ -165,12 +167,18 @@ const App = () => {
     return { replicationForks, reversedForks, ratio };
   }, [annotations.images]);
 
-  // bootstrap - load projects
+  // bootstrap - load environment + projects
   // ====================
   useEffect(() => {
-    getProjects()
-      .then((ps) => {
+    Promise.all([getEnvironment(), getProjects()])
+      .then(([env, ps]) => {
+        const trainEnv = env.environment === "TRAIN";
+        setIsTrainEnv(trainEnv);
         setProjects(ps);
+        // TRAIN has exactly one project (the parent dir itself) - skip manual selection
+        if (trainEnv && ps.length > 0) {
+          setSelectedProject(ps[0]);
+        }
       })
       .catch((e) => setError(String(e)));
   }, []);
@@ -540,11 +548,13 @@ const App = () => {
                 ))}
               </Select>
             </FormControl>
-            <Tooltip title="Manage projects">
-              <IconButton size="small" onClick={() => setManageProjectsOpen(true)}>
-                <FolderSharedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {!isTrainEnv && (
+              <Tooltip title="Manage projects">
+                <IconButton size="small" onClick={() => setManageProjectsOpen(true)}>
+                  <FolderSharedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
           {selectedProject && (
             <Box sx={{ px: 1.5, pb: 1, display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>

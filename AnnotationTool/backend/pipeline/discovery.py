@@ -1,19 +1,32 @@
 """Project discovery for the annotation tool.
 
-A "project" is a base folder containing raw microscope tiles like
-``<base_folder>/LayersData/highmag/Tile Set (N)/Tile_X-Y-000000_0-000.tif``.
+The tool runs in one of three environments (ANNOTATION_TOOL_ENV): PROD, DEV
+or TRAIN - see ToolEnvironment below. Each has its own parent dir
+(PROJECTS_PARENT_DIR_<ENV> in .annotation_tool_env).
+
+In PROD/DEV, a "project" is a base folder containing raw microscope tiles
+like ``<base_folder>/LayersData/highmag/Tile Set (N)/Tile_X-Y-000000_0-000.tif``.
 A base folder can be nested arbitrarily deep anywhere under
-PROJECTS_PARENT_DIR, the user registers individual ones in a small registry 
-file  stored in this parent directory. Each "registered" project is 
-identified by its path relative to PROJECTS_PARENT_DIR
+PROJECTS_PARENT_DIR, the user registers individual ones in a small registry
+file stored in this parent directory. Each "registered" project is
+identified by its path relative to PROJECTS_PARENT_DIR.
+
+In TRAIN, PROJECTS_PARENT_DIR directly contains the TIF images to process
+(no LayersData/highmag nesting) and is itself the only "project" - there is
+no discovery/registration step, see TRAIN_PROJECT_NAME.
 """
 
 import json
 import os
 import re
+from enum import Enum
 from pathlib import Path
 
 from dotenv import dotenv_values
+
+from Segmentation.PreProcessing.General.tile_naming_util import (
+    get_display_name as _get_layered_tile_display_name,
+)
 
 _ANNOTATION_TOOL_ENV_PATH = Path(
     __file__).resolve().parents[2] / ".annotation_tool_env"
@@ -24,12 +37,49 @@ def _get_env(key: str, default: str) -> str:
     return _env_values.get(key) or os.getenv(key) or default
 
 
+class ToolEnvironment(str, Enum):
+    PROD = "PROD"
+    DEV = "DEV"
+    TRAIN = "TRAIN"
+
+
+def _get_tool_environment() -> ToolEnvironment:
+    raw = _get_env("ANNOTATION_TOOL_ENV", "DEV").strip().upper()
+    try:
+        return ToolEnvironment(raw)
+    except ValueError:
+        valid = ", ".join(e.value for e in ToolEnvironment)
+        raise ValueError(
+            f"ANNOTATION_TOOL_ENV must be one of [{valid}], got '{raw}'")
+
+
+def _get_projects_parent_dir(environment: ToolEnvironment) -> Path:
+    key = f"PROJECTS_PARENT_DIR_{environment.value}"
+    val = _get_env(key, "")
+    if not val:
+        raise ValueError(
+            f"{key} must be set in {_ANNOTATION_TOOL_ENV_PATH}")
+    return Path(val)
+
+
+TOOL_ENVIRONMENT = _get_tool_environment()
+IS_TRAIN_ENV = TOOL_ENVIRONMENT == ToolEnvironment.TRAIN
+
+PROJECTS_PARENT_DIR = _get_projects_parent_dir(TOOL_ENVIRONMENT)
+
+# In TRAIN mode, PROJECTS_PARENT_DIR is itself the only project - it's
+# exposed to the frontend under this fixed name instead of going through
+# discovery/registration.
+TRAIN_PROJECT_NAME = "training-data"
+
 AUTOMATIC_FORK_DETECTION_DIR_NAME = _get_env(
     "AUTOMATIC_FORK_DETECTION_DIR_NAME", "AutomaticForkDetection")
 REGISTRY_FILENAME = _get_env(
     "REGISTRY_FILENAME", ".forksight-annotator-projects.json")
 
-TILE_GLOB_PATTERN = "LayersData/highmag/Tile Set (*)/*.tif"
+# PROD/DEV enforce the LayersData/highmag/Tile Set (N)/ nesting; TRAIN just
+# discovers all TIFs directly under the project dir.
+TILE_GLOB_PATTERN = "*.tif" if IS_TRAIN_ENV else "LayersData/highmag/Tile Set (*)/*.tif"
 
 SEGMENTATION_DIR_NAME = "Segmentation"
 SEGMENTATION_PATCHES_DIR_NAME = "SegmentationPatches"
@@ -130,6 +180,20 @@ def list_candidate_dirs(parent_dir: Path) -> list[dict]:
 
 def find_project_tiles(base_folder: Path) -> list[Path]:
     return sorted(Path(base_folder).glob(TILE_GLOB_PATTERN))
+
+
+def get_tile_display_name(tile_path: Path) -> str:
+    """Name shown for a tile in the UI/exports.
+
+    PROD/DEV tiles follow the Tile Set (N)/Tile_X-Y-000000_0-000.tif naming
+    convention, from which a "Tile Set N - Tile X Y" name is derived. TRAIN
+    tiles are flat, arbitrarily-named TIFs with no such structure, so their
+    own file name is used as-is.
+    """
+    tile_path = Path(tile_path)
+    if IS_TRAIN_ENV:
+        return tile_path.name
+    return _get_layered_tile_display_name(tile_path)
 
 
 _NETWORK_FS_TYPES = {

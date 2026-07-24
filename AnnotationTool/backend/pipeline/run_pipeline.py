@@ -28,7 +28,6 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from AnnotationTool.backend.util import get_repo_root, venv_python_executable
-from Segmentation.PreProcessing.General.tile_naming_util import get_display_name
 
 from AnnotationTool.backend.pipeline.annotations_store import (
     load_annotations,
@@ -39,6 +38,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_PATCHES_DIR_NAME,
     SEGMENTATION_TMP_DIR_PREFIX,
     find_project_tiles,
+    get_tile_display_name,
 )
 from AnnotationTool.backend.pipeline.progress_util import write_progress
 
@@ -137,7 +137,7 @@ def run_staged_junction_detection_pipeline(project_dir: Path, sample_percentage:
         {
             "id": str(uuid.uuid4()),
             "source_tif": t.relative_to(project_dir).as_posix(),
-            "display_name": get_display_name(t),
+            "display_name": get_tile_display_name(t),
         }
         for t in new_tiles
     ]

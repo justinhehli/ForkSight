@@ -47,6 +47,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_TMP_DIR_PREFIX,
     find_project_tiles,
     fork_detection_dir,
+    get_tile_display_name,
 )
 from AnnotationTool.backend.pipeline.progress_util import write_progress
 from Segmentation.PostProcessing.segmentation_postprocessing import (
@@ -54,7 +55,6 @@ from Segmentation.PostProcessing.segmentation_postprocessing import (
 )
 from Segmentation.PreProcessing.General.preprocessing_util import create_patches_from_img
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
-from Segmentation.PreProcessing.General.tile_naming_util import get_display_name
 from Segmentation.Util.patch_grid_util import (
     GRID_SIZE,
     PATCH_SIZE,
@@ -184,7 +184,7 @@ def main():
 
             image_id = str(uuid.uuid4())
             source_tif = tile_path.relative_to(project_dir).as_posix()
-            display_name = get_display_name(tile_path)
+            display_name = get_tile_display_name(tile_path)
 
             stitched = _segment_tile(tile_path, image_id, predictor)
 
