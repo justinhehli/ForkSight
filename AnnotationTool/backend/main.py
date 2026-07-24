@@ -592,26 +592,31 @@ def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectio
         with _get_project_lock(project):
             ann = load_annotations(pd)
 
-            # mode of project (if set before) trumps global default setting
-            mode = ann.get("pipeline_mode") or global_settings["pipeline_mode"]
-
-            if mode == PipelineMode.Sequential:
-                additional = body.amount if body.amount is not None else global_settings[
-                    "sequential_target_junction_count"]
-                if additional is None or additional <= 0:
-                    raise HTTPException(
-                        400, "amount (additional junctions) must be positive")
-                target_junction_count = int(round(
-                    _count_total_junctions(ann["images"]) + additional))
-                mode_args = ["--target-junction-count",
-                             str(target_junction_count)]
+            if IS_TRAIN_ENV:
+                # TRAIN environment always runs staged over the full set of tiles
+                mode = PipelineMode.Staged
+                mode_args = ["--sample-percentage", "100"]
             else:
-                percentage = body.amount if body.amount is not None else global_settings[
-                    "staged_sample_percentage"]
-                if percentage is None or not (0 < percentage <= 100):
-                    raise HTTPException(
-                        400, "amount (percentage) must be in (0, 100]")
-                mode_args = ["--sample-percentage", str(percentage)]
+                # mode of project (if set before) trumps global default setting
+                mode = ann.get("pipeline_mode") or global_settings["pipeline_mode"]
+
+                if mode == PipelineMode.Sequential:
+                    additional = body.amount if body.amount is not None else global_settings[
+                        "sequential_target_junction_count"]
+                    if additional is None or additional <= 0:
+                        raise HTTPException(
+                            400, "amount (additional junctions) must be positive")
+                    target_junction_count = int(round(
+                        _count_total_junctions(ann["images"]) + additional))
+                    mode_args = ["--target-junction-count",
+                                 str(target_junction_count)]
+                else:
+                    percentage = body.amount if body.amount is not None else global_settings[
+                        "staged_sample_percentage"]
+                    if percentage is None or not (0 < percentage <= 100):
+                        raise HTTPException(
+                            400, "amount (percentage) must be in (0, 100]")
+                    mode_args = ["--sample-percentage", str(percentage)]
 
             ann["pipeline_mode"] = mode
             ann["junction_detection_pipeline_status"] = PipelineStatus.Running
