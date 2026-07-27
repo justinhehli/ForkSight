@@ -74,7 +74,7 @@ source_dirs = [
 
 target_dir = "C:\\Users\\juhe9\\repos\\MasterThesis\\ForkSight\\Data\\RawData\\junction_detection_training_new"
 
-N_SAMPLES = 200
+N_SAMPLES = 100
 RANDOM_SEED = 42
 
 
@@ -96,14 +96,21 @@ def main():
         raise ValueError(
             f"Only found {len(tif_paths)} TIF images, cannot sample {N_SAMPLES}")
 
-    sampled_paths = random.sample(tif_paths, N_SAMPLES)
-
     target_dir_path = Path(target_dir)
     target_dir_path.mkdir(parents=True, exist_ok=True)
 
-    for tif_path in sampled_paths:
+    def get_new_tif_name(tif_path: Path) -> str:
         # get_new_name always appends ".png" - keep the original TIF extension
-        new_name = Path(get_new_name(tif_path)).with_suffix(".tif").name
+        return Path(get_new_name(tif_path)).with_suffix(".tif").name
+
+    existing_sample_names = [p.name for p in target_dir_path.rglob("*.tif")]
+    tif_paths = list(filter(lambda p: get_new_tif_name(
+        p) not in existing_sample_names, tif_paths))
+
+    sampled_paths = random.sample(tif_paths, N_SAMPLES)
+
+    for tif_path in sampled_paths:
+        new_name = get_new_tif_name(tif_path)
         shutil.copy2(tif_path, target_dir_path / new_name)
         print(f"Copied {tif_path} -> {new_name}")
 
