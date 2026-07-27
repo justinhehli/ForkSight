@@ -72,6 +72,7 @@ export interface Point {
 export interface ImageAnnotations {
   processed: boolean;
   points: Point[];
+  archived?: boolean;
 }
 
 export interface ProjectAnnotations {
@@ -86,6 +87,7 @@ export interface ImageMeta {
   id: string;
   name: string;
   processed: boolean;
+  archived: boolean;
 }
 
 export interface ProjectCandidate {

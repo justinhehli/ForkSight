@@ -18,6 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import { getProjectCandidates, getProjectFolderPath, setRegisteredProjects } from "../api";
+import { formatPathForClipboard } from "../clientPath";
 import type { ProjectCandidate } from "../types";
 
 interface Props {
@@ -67,7 +68,7 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
   const handleCopyPath = async (name: string) => {
     try {
       const { path } = await getProjectFolderPath(name);
-      await navigator.clipboard.writeText(path);
+      await navigator.clipboard.writeText(formatPathForClipboard(path));
       setCopiedName(name);
       setTimeout(() => setCopiedName((prev) => (prev === name ? null : prev)), 1500);
     } catch (e) {

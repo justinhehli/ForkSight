@@ -280,7 +280,8 @@ def list_images(project: str):
     ann = load_annotations(pd)
     images = [
         {"id": image_id, "name": img["display_name"],
-            "processed": img.get("processed", False)}
+            "processed": img.get("processed", False),
+            "archived": img.get("archived", False)}
         for image_id, img in ann["images"].items()
     ]
     images.sort(key=lambda i: i["name"])
@@ -340,6 +341,28 @@ def save_image_annotations(project: str, image_id: str, data: ImageAnnotations):
         save_annotations(pd, ann)
 
 
+@app.post("/projects/{project:path}/images/{image_id}/archive", status_code=204)
+def archive_image(project: str, image_id: str):
+    pd = project_dir(project)
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        if image_id not in ann["images"]:
+            raise HTTPException(404, f"Image '{image_id}' not found")
+        ann["images"][image_id]["archived"] = True
+        save_annotations(pd, ann)
+
+
+@app.post("/projects/{project:path}/images/{image_id}/unarchive", status_code=204)
+def unarchive_image(project: str, image_id: str):
+    pd = project_dir(project)
+    with _get_project_lock(project):
+        ann = load_annotations(pd)
+        if image_id not in ann["images"]:
+            raise HTTPException(404, f"Image '{image_id}' not found")
+        ann["images"][image_id]["archived"] = False
+        save_annotations(pd, ann)
+
+
 @app.post("/projects/{project:path}/labels")
 def add_custom_label(project: str, body: CreateLabelWrapper) -> list[str]:
     label = body.label.strip()
@@ -377,6 +400,10 @@ def delete_custom_label(project: str, label: str) -> list[str]:
                         l for l in point["labels"] if l != label]
         save_annotations(pd, ann)
         return additional
+
+
+def _active_images(images: dict) -> dict:
+    return {image_id: img for image_id, img in images.items() if not img.get("archived", False)}
 
 
 def _compute_summary(images: dict) -> dict:
@@ -419,7 +446,7 @@ def export_project(project: str):
     images = ann["images"]
 
     export_data = {
-        "summary": _compute_summary(images),
+        "summary": _compute_summary(_active_images(images)),
         "images": images,
     }
 
@@ -437,7 +464,8 @@ def export_project(project: str):
 def export_project_excel(project: str):
     ann = load_annotations(project_dir(project))
     images = ann["images"]
-    summary = _compute_summary(images)
+    active_images = _active_images(images)
+    summary = _compute_summary(active_images)
 
     wb = Workbook()
     ws = wb.active
@@ -460,7 +488,7 @@ def export_project_excel(project: str):
     for cell in ws[ws.max_row]:
         cell.font = bold
 
-    for img_ann in sorted(images.values(), key=lambda i: i.get("display_name", "")):
+    for img_ann in sorted(active_images.values(), key=lambda i: i.get("display_name", "")):
         source_tif = img_ann.get("display_name", "")
         processed = "Yes" if img_ann.get("processed", False) else "No"
         points = img_ann.get("points", [])
@@ -598,7 +626,8 @@ def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectio
                 mode_args = ["--sample-percentage", "100"]
             else:
                 # mode of project (if set before) trumps global default setting
-                mode = ann.get("pipeline_mode") or global_settings["pipeline_mode"]
+                mode = ann.get(
+                    "pipeline_mode") or global_settings["pipeline_mode"]
 
                 if mode == PipelineMode.Sequential:
                     additional = body.amount if body.amount is not None else global_settings[
@@ -607,7 +636,7 @@ def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectio
                         raise HTTPException(
                             400, "amount (additional junctions) must be positive")
                     target_junction_count = int(round(
-                        _count_total_junctions(ann["images"]) + additional))
+                        _count_total_junctions(_active_images(ann["images"])) + additional))
                     mode_args = ["--target-junction-count",
                                  str(target_junction_count)]
                 else:

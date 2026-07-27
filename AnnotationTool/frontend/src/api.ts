@@ -66,6 +66,28 @@ export const saveImageAnnotations = async (project: string, imageId: string, dat
   }
 };
 
+export const archiveImage = async (project: string, imageId: string): Promise<void> => {
+  const response = await fetch(
+    `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/archive`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+};
+
+export const unarchiveImage = async (project: string, imageId: string): Promise<void> => {
+  const response = await fetch(
+    `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/unarchive`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+};
+
 export const exportProject = async (project: string): Promise<Blob> => {
   const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/export`, { method: "POST" });
   if (!response.ok) {

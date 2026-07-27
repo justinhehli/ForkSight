@@ -4,13 +4,16 @@ import {
   ArrowDropDown as ArrowDropDownIcon,
   BarChart as BarChartIcon,
   CheckCircle as CheckCircleIcon,
+  Circle as CircleIcon,
   DarkMode as DarkModeIcon,
   Delete as DeleteIcon,
+  DeleteOutline as DeleteOutlineIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   ContentCopy as ContentCopyIcon,
   FileDownload as FileDownloadIcon,
   FolderShared as FolderSharedIcon,
+  HighlightOff as HighlightOffIcon,
   LightMode as LightModeIcon,
   NavigateBefore,
   NavigateNext,
@@ -57,6 +60,7 @@ import {
 } from "@mui/material";
 import {
   addCustomLabel,
+  archiveImage,
   deleteCustomLabel,
   exportProject,
   exportProjectExcel,
@@ -72,11 +76,14 @@ import {
   runJunctionDetection,
   saveImageAnnotations,
   stopJunctionDetection,
+  unarchiveImage,
 } from "./api";
 import AdditionalDetectionDialog from "./components/AdditionalDetectionDialog";
+import ArchivedImagesDialog from "./components/ArchivedImagesDialog";
 import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
 import PipelineSettingsDialog from "./components/PipelineSettingsDialog";
+import { formatPathForClipboard } from "./clientPath";
 import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus, sortLabelsForDisplay } from "./types";
 import type { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
 import React from "react";
@@ -97,6 +104,9 @@ const EMPTY_PROJECT: ProjectAnnotations = {
   images: {},
 };
 
+const REPLICATION_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
+const REVERSED_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
+
 const App = () => {
   // state
   // ====================
@@ -115,6 +125,8 @@ const App = () => {
   const [selectedProject, setSelectedProject] = useState("");
   const [isTrainEnv, setIsTrainEnv] = useState(false);
   const [images, setImages] = useState<ImageMeta[]>([]);
+  const [archivedImages, setArchivedImages] = useState<ImageMeta[]>([]);
+  const [archivedDialogOpen, setArchivedDialogOpen] = useState(false);
   const [imageIdx, setImageIdx] = useState(0);
   const [annotations, setAnnotations] = useState<ProjectAnnotations>(EMPTY_PROJECT);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -149,7 +161,9 @@ const App = () => {
   const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
 
   const stats = useMemo(() => {
-    const allPoints = Object.values(annotations.images).flatMap((a) => a.points);
+    const allPoints = Object.values(annotations.images)
+      .filter((a) => !a.archived)
+      .flatMap((a) => a.points);
     const replicationGroup = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
     const reversedGroup = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
     let replicationForks = 0;
@@ -165,6 +179,24 @@ const App = () => {
     }
     const ratio = reversedForks > 0 ? (replicationForks / reversedForks).toFixed(2) : "—";
     return { replicationForks, reversedForks, ratio };
+  }, [annotations.images]);
+
+  const forkStatusByImage = useMemo(() => {
+    const map = new Map<string, { hasAnyAnnotations: boolean; hasReplication: boolean; hasReversed: boolean }>();
+    for (const [imgId, imgAnn] of Object.entries(annotations.images)) {
+      let hasReplication = false;
+      let hasReversed = false;
+      for (const p of imgAnn.points) {
+        if (p.labels.includes(REPLICATION_FORK_GROUP.fifty) || p.labels.includes(REPLICATION_FORK_GROUP.hundred)) {
+          hasReplication = true;
+        }
+        if (p.labels.includes(REVERSED_FORK_GROUP.fifty) || p.labels.includes(REVERSED_FORK_GROUP.hundred)) {
+          hasReversed = true;
+        }
+      }
+      map.set(imgId, { hasAnyAnnotations: imgAnn.points.length > 0, hasReplication, hasReversed });
+    }
+    return map;
   }, [annotations.images]);
 
   // bootstrap - load environment + projects
@@ -226,9 +258,11 @@ const App = () => {
 
     Promise.all([getImages(selectedProject), getAnnotations(selectedProject)])
       .then(([imgs, ann]) => {
-        setImages(imgs);
+        const active = imgs.filter((img) => !img.archived);
+        setImages(active);
+        setArchivedImages(imgs.filter((img) => img.archived));
         setAnnotations(ann);
-        const firstUnprocessed = imgs.findIndex((img) => !img.processed);
+        const firstUnprocessed = active.findIndex((img) => !img.processed);
         setImageIdx(firstUnprocessed >= 0 ? firstUnprocessed : 0);
       })
       .catch((e) => setError(String(e)))
@@ -238,6 +272,42 @@ const App = () => {
   useEffect(() => {
     loadSelectedProject();
   }, [loadSelectedProject]);
+
+  // refresh the image list and its annotations after archiving/restoring
+  const refreshImages = useCallback(async () => {
+    try {
+      const [imgs, ann] = await Promise.all([getImages(selectedProject), getAnnotations(selectedProject)]);
+      const active = imgs.filter((img) => !img.archived);
+      setArchivedImages(imgs.filter((img) => img.archived));
+      setAnnotations(ann);
+      setImages(active);
+      setImageIdx((prevIdx) => {
+        const keepId = images[prevIdx]?.id;
+        const idx = keepId ? active.findIndex((img) => img.id === keepId) : -1;
+        return idx >= 0 ? idx : Math.min(prevIdx, Math.max(0, active.length - 1));
+      });
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [selectedProject, images]);
+
+  const handleArchiveImage = async (imageId: string) => {
+    try {
+      await archiveImage(selectedProject, imageId);
+      await refreshImages();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleRestoreImage = async (imageId: string) => {
+    try {
+      await unarchiveImage(selectedProject, imageId);
+      await refreshImages();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   // auto-save
   // ====================
@@ -372,7 +442,7 @@ const App = () => {
   const handleCopyProjectPath = async () => {
     try {
       const { path } = await getProjectFolderPath(selectedProject);
-      await navigator.clipboard.writeText(path);
+      await navigator.clipboard.writeText(formatPathForClipboard(path));
       setPathCopied(true);
       setTimeout(() => setPathCopied(false), 1500);
     } catch (e) {
@@ -535,6 +605,7 @@ const App = () => {
                 onChange={(e) => {
                   setSelectedProject(e.target.value);
                   setImages([]);
+                  setArchivedImages([]);
                   setAnnotations(EMPTY_PROJECT);
                   setImageIdx(0);
                   setSelectedPointId(null);
@@ -580,32 +651,88 @@ const App = () => {
           <Box sx={{ px: 1.5, pt: 1, display: "flex", alignItems: "center", gap: 1 }}>
             <Typography variant="subtitle2">Images</Typography>
             <Chip label={`${processedCount}/${images.length}`} size="small" color="primary" />
+            {archivedImages.length > 0 && (
+              <Tooltip title="View / restore archived images">
+                <Chip
+                  label={`${archivedImages.length} archived`}
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setArchivedDialogOpen(true)}
+                  sx={{ cursor: "pointer" }}
+                />
+              </Tooltip>
+            )}
           </Box>
           <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
-            {images.map((img, idx) => (
-              <ListItemButton
-                key={img.id}
-                selected={idx === imageIdx}
-                onClick={() => {
-                  setImageIdx(idx);
-                  setSelectedPointId(null);
-                }}
-                sx={{ py: 0.25 }}
-                disabled={!!error || pipelineStatus !== PipelineStatus.Done}
-              >
-                <ListItemIcon sx={{ minWidth: 28 }}>
-                  {img.processed ? (
-                    <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
-                  ) : (
-                    <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} color="disabled" />
-                  )}
-                </ListItemIcon>
-                <ListItemText
-                  primary={img.name}
-                  primaryTypographyProps={{ variant: "body2", noWrap: true, fontSize: 12 }}
-                />
-              </ListItemButton>
-            ))}
+            {images.map((img, idx) => {
+              const forkStatus = forkStatusByImage.get(img.id);
+              const hasAnyAnnotations = forkStatus?.hasAnyAnnotations ?? false;
+              const hasReplication = forkStatus?.hasReplication ?? false;
+              const hasReversed = forkStatus?.hasReversed ?? false;
+              return (
+                <ListItem
+                  key={img.id}
+                  disablePadding
+                  secondaryAction={
+                    <Tooltip title="Archive image (can be restored later)">
+                      <span>
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          tabIndex={-1}
+                          disabled={!!error || pipelineStatus !== PipelineStatus.Done}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleArchiveImage(img.id);
+                          }}
+                        >
+                          <DeleteOutlineIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  }
+                >
+                  <ListItemButton
+                    selected={idx === imageIdx}
+                    onClick={() => {
+                      setImageIdx(idx);
+                      setSelectedPointId(null);
+                    }}
+                    sx={{ py: 0.25, pr: 4.5 }}
+                    disabled={!!error || pipelineStatus !== PipelineStatus.Done}
+                  >
+                    <ListItemIcon sx={{ minWidth: 28 }}>
+                      {img.processed ? (
+                        <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
+                      ) : (
+                        <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} color="disabled" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={img.name}
+                      primaryTypographyProps={{ variant: "body2", noWrap: true, fontSize: 12 }}
+                    />
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, ml: 0.5, flexShrink: 0 }}>
+                      {!hasAnyAnnotations && (
+                        <Tooltip title="No annotations">
+                          <HighlightOffIcon sx={{ fontSize: 14 }} color="disabled" />
+                        </Tooltip>
+                      )}
+                      {hasReplication && (
+                        <Tooltip title="Has replication forks">
+                          <CircleIcon sx={{ fontSize: 11, color: REPLICATION_FORK_GROUP.color }} />
+                        </Tooltip>
+                      )}
+                      {hasReversed && (
+                        <Tooltip title="Has reversed forks">
+                          <CircleIcon sx={{ fontSize: 11, color: REVERSED_FORK_GROUP.color }} />
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </ListItemButton>
+                </ListItem>
+              );
+            })}
           </List>
           <Divider />
         </Drawer>
@@ -1196,6 +1323,12 @@ const App = () => {
           </Box>
         </DialogContent>
       </Dialog>
+      <ArchivedImagesDialog
+        open={archivedDialogOpen}
+        images={archivedImages}
+        onClose={() => setArchivedDialogOpen(false)}
+        onRestore={handleRestoreImage}
+      />
       <Dialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Pipeline log{pipelineStatus === PipelineStatus.Running ? " (live)" : ""}</DialogTitle>
         <DialogContent>
