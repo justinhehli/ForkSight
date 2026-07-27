@@ -84,6 +84,7 @@ import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
 import PipelineSettingsDialog from "./components/PipelineSettingsDialog";
 import { formatPathForClipboard } from "./clientPath";
+import { prefetchImage, prefetchMask } from "./imageCache";
 import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus, sortLabelsForDisplay } from "./types";
 import type { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
 import React from "react";
@@ -272,6 +273,18 @@ const App = () => {
   useEffect(() => {
     loadSelectedProject();
   }, [loadSelectedProject]);
+
+  const PREFETCH_RADIUS = 3;
+  useEffect(() => {
+    if (!selectedProject || images.length === 0) return;
+
+    for (let offset = -PREFETCH_RADIUS; offset <= PREFETCH_RADIUS; offset++) {
+      const img = images[imageIdx + offset];
+      if (!img) continue;
+      prefetchImage(selectedProject, img.id);
+      prefetchMask(selectedProject, img.id);
+    }
+  }, [selectedProject, images, imageIdx]);
 
   // refresh the image list and its annotations after archiving/restoring
   const refreshImages = useCallback(async () => {
