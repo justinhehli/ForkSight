@@ -1,26 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Add as AddIcon,
   ArrowDropDown as ArrowDropDownIcon,
   BarChart as BarChartIcon,
-  CheckCircle as CheckCircleIcon,
-  Circle as CircleIcon,
   DarkMode as DarkModeIcon,
-  Delete as DeleteIcon,
-  DeleteOutline as DeleteOutlineIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon,
   ContentCopy as ContentCopyIcon,
   FileDownload as FileDownloadIcon,
   FolderShared as FolderSharedIcon,
-  HighlightOff as HighlightOffIcon,
   LightMode as LightModeIcon,
   NavigateBefore,
   NavigateNext,
   DataObject as DataObjectIcon,
   ListAlt as ListAltIcon,
   PlayArrow as PlayArrowIcon,
-  RadioButtonUnchecked as RadioButtonUncheckedIcon,
   Settings as SettingsIcon,
   TaskAlt as TaskAltIcon,
 } from "@mui/icons-material";
@@ -30,7 +21,6 @@ import {
   Box,
   Button,
   ButtonGroup,
-  Chip,
   CircularProgress,
   CssBaseline,
   Dialog,
@@ -42,16 +32,11 @@ import {
   IconButton,
   InputLabel,
   LinearProgress,
-  List,
-  ListItem,
-  ListItemButton,
   ListItemIcon,
-  ListItemText,
   Menu,
   MenuItem,
   Select,
   Snackbar,
-  TextField,
   ThemeProvider,
   Toolbar,
   Tooltip,
@@ -79,14 +64,16 @@ import {
   unarchiveImage,
 } from "./api";
 import AdditionalDetectionDialog from "./components/AdditionalDetectionDialog";
+import AnnotationSidePanel from "./components/AnnotationSidePanel";
 import ArchivedImagesDialog from "./components/ArchivedImagesDialog";
-import ImageAnnotator, { labelColor } from "./components/ImageAnnotator";
+import ImageAnnotator from "./components/ImageAnnotator";
+import ImageListPanel from "./components/ImageListPanel";
 import ManageProjectsDialog from "./components/ManageProjectsDialog";
 import PipelineSettingsDialog from "./components/PipelineSettingsDialog";
 import { formatPathForClipboard } from "./clientPath";
 import { prefetchImage, prefetchMask } from "./imageCache";
-import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus, sortLabelsForDisplay } from "./types";
-import type { ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
+import { FORK_GROUPS, FORK_WEIGHTS, PipelineStatus } from "./types";
+import type { ForkGroup, ImageAnnotations, ImageMeta, PipelineProgress, ProjectAnnotations } from "./types";
 import React from "react";
 
 const DRAWER_WIDTH = 270;
@@ -104,9 +91,6 @@ const EMPTY_PROJECT: ProjectAnnotations = {
   additional_labels: [],
   images: {},
 };
-
-const REPLICATION_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
-const REVERSED_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
 
 const App = () => {
   // state
@@ -142,8 +126,6 @@ const App = () => {
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logText, setLogText] = useState("");
   const [runningProject, setRunningProject] = useState<string | null>(null);
-  const [newLabelInput, setNewLabelInput] = useState("");
-  const [showShortcuts, setShowShortcuts] = useState(true);
   const [backendRestarting, setBackendRestarting] = useState(false);
   const [backendRestartTimedOut, setBackendRestartTimedOut] = useState(false);
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null);
@@ -158,10 +140,14 @@ const App = () => {
   const currentImageId = images[imageIdx]?.id ?? "";
   const currentImageName = images[imageIdx]?.name ?? "";
   const currentAnnotations: ImageAnnotations = annotations.images[currentImageId] ?? EMPTY_IMG_ANNOTATIONS;
-  const processedCount = images.filter((i) => i.processed).length;
-  const selectedPoint = currentAnnotations.points.find((p) => p.id === selectedPointId);
+  const processedCount = useMemo(() => images.filter((i) => i.processed).length, [images]);
 
+  // Only recomputed while the overview dialog is actually open
   const stats = useMemo(() => {
+    if (!overviewOpen) {
+      return { replicationForks: 0, reversedForks: 0, ratio: "—" };
+    }
+
     const allPoints = Object.values(annotations.images)
       .filter((a) => !a.archived)
       .flatMap((a) => a.points);
@@ -169,6 +155,7 @@ const App = () => {
     const reversedGroup = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
     let replicationForks = 0;
     let reversedForks = 0;
+
     for (const p of allPoints) {
       for (const l of p.labels) {
         if (l === replicationGroup.fifty || l === replicationGroup.hundred) {
@@ -178,27 +165,10 @@ const App = () => {
         }
       }
     }
+
     const ratio = reversedForks > 0 ? (replicationForks / reversedForks).toFixed(2) : "—";
     return { replicationForks, reversedForks, ratio };
-  }, [annotations.images]);
-
-  const forkStatusByImage = useMemo(() => {
-    const map = new Map<string, { hasAnyAnnotations: boolean; hasReplication: boolean; hasReversed: boolean }>();
-    for (const [imgId, imgAnn] of Object.entries(annotations.images)) {
-      let hasReplication = false;
-      let hasReversed = false;
-      for (const p of imgAnn.points) {
-        if (p.labels.includes(REPLICATION_FORK_GROUP.fifty) || p.labels.includes(REPLICATION_FORK_GROUP.hundred)) {
-          hasReplication = true;
-        }
-        if (p.labels.includes(REVERSED_FORK_GROUP.fifty) || p.labels.includes(REVERSED_FORK_GROUP.hundred)) {
-          hasReversed = true;
-        }
-      }
-      map.set(imgId, { hasAnyAnnotations: imgAnn.points.length > 0, hasReplication, hasReversed });
-    }
-    return map;
-  }, [annotations.images]);
+  }, [annotations.images, overviewOpen]);
 
   // bootstrap - load environment + projects
   // ====================
@@ -274,6 +244,8 @@ const App = () => {
     loadSelectedProject();
   }, [loadSelectedProject]);
 
+  // memoized to minimize pre-fetching
+  const imageIdsKey = useMemo(() => images.map((i) => i.id).join(","), [images]);
   const PREFETCH_RADIUS = 3;
   useEffect(() => {
     if (!selectedProject || images.length === 0) return;
@@ -284,7 +256,7 @@ const App = () => {
       prefetchImage(selectedProject, img.id);
       prefetchMask(selectedProject, img.id);
     }
-  }, [selectedProject, images, imageIdx]);
+  }, [selectedProject, imageIdx, imageIdsKey]);
 
   // refresh the image list and its annotations after archiving/restoring
   const refreshImages = useCallback(async () => {
@@ -304,14 +276,26 @@ const App = () => {
     }
   }, [selectedProject, images]);
 
-  const handleArchiveImage = async (imageId: string) => {
+  // ref so handleArchiveImage keeps a stable identity across renders
+  const selectedProjectRef = useRef(selectedProject);
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+
+  // ref so handleArchiveImage keeps a stable identity across renders
+  const refreshImagesRef = useRef(refreshImages);
+  useEffect(() => {
+    refreshImagesRef.current = refreshImages;
+  }, [refreshImages]);
+
+  const handleArchiveImage = useCallback(async (imageId: string) => {
     try {
-      await archiveImage(selectedProject, imageId);
-      await refreshImages();
+      await archiveImage(selectedProjectRef.current, imageId);
+      await refreshImagesRef.current();
     } catch (e) {
       setError(String(e));
     }
-  };
+  }, []);
 
   const handleRestoreImage = async (imageId: string) => {
     try {
@@ -358,53 +342,84 @@ const App = () => {
     handleAnnotationsChange({ ...currentAnnotations, processed: !currentAnnotations.processed });
   }, [currentAnnotations, handleAnnotationsChange]);
 
-  const deletePoint = (id: string) => {
-    handleAnnotationsChange({ ...currentAnnotations, points: currentAnnotations.points.filter((p) => p.id !== id) });
-    if (selectedPointId === id) {
-      setSelectedPointId(null);
-    }
-  };
+  // refs so deletePoint/cycleForkGroup/toggleLabel/onTogglePoint keep stable identities across renders - they're passed down into the memoized annotation-list rows, and
+  const currentAnnotationsRef = useRef(currentAnnotations);
+  useEffect(() => {
+    currentAnnotationsRef.current = currentAnnotations;
+  }, [currentAnnotations]);
 
-  const cycleForkGroup = (id: string, group: (typeof FORK_GROUPS)[number]) => {
-    const point = currentAnnotations.points.find((p) => p.id === id);
-    if (!point) return;
+  const selectedPointIdRef = useRef(selectedPointId);
+  useEffect(() => {
+    selectedPointIdRef.current = selectedPointId;
+  }, [selectedPointId]);
 
-    const has50 = point.labels.includes(group.fifty);
-    const has100 = point.labels.includes(group.hundred);
-    const forkLabels = new Set<string>(FORK_GROUPS.flatMap((g) => [g.fifty, g.hundred]));
-    const rest = point.labels.filter((l) => !forkLabels.has(l));
-    const labels = has100 ? rest : has50 ? [...rest, group.hundred] : [...rest, group.fifty];
-    handleAnnotationsChange({
-      ...currentAnnotations,
-      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, labels } : p)),
-    });
-  };
+  const deletePoint = useCallback(
+    (id: string) => {
+      const cur = currentAnnotationsRef.current;
+      handleAnnotationsChange({ ...cur, points: cur.points.filter((p) => p.id !== id) });
+      if (selectedPointIdRef.current === id) {
+        setSelectedPointId(null);
+      }
+    },
+    [handleAnnotationsChange],
+  );
 
-  const toggleLabel = (id: string, label: string) => {
-    const point = currentAnnotations.points.find((p) => p.id === id);
-    if (!point) return;
-    const labels = point.labels.includes(label) ? point.labels.filter((l) => l !== label) : [...point.labels, label];
-    handleAnnotationsChange({
-      ...currentAnnotations,
-      points: currentAnnotations.points.map((p) => (p.id === id ? { ...p, labels } : p)),
-    });
-  };
+  const cycleForkGroup = useCallback(
+    (id: string, group: ForkGroup) => {
+      const cur = currentAnnotationsRef.current;
+      const point = cur.points.find((p) => p.id === id);
+      if (!point) return;
 
-  const handleAddCustomLabel = async () => {
-    const label = newLabelInput.trim();
-    if (!label) return;
+      const has50 = point.labels.includes(group.fifty);
+      const has100 = point.labels.includes(group.hundred);
+      const forkLabels = new Set<string>(FORK_GROUPS.flatMap((g) => [g.fifty, g.hundred]));
+      const rest = point.labels.filter((l) => !forkLabels.has(l));
+      const labels = has100 ? rest : has50 ? [...rest, group.hundred] : [...rest, group.fifty];
+      handleAnnotationsChange({
+        ...cur,
+        points: cur.points.map((p) => (p.id === id ? { ...p, labels } : p)),
+      });
+    },
+    [handleAnnotationsChange],
+  );
+
+  const toggleLabel = useCallback(
+    (id: string, label: string) => {
+      const cur = currentAnnotationsRef.current;
+      const point = cur.points.find((p) => p.id === id);
+      if (!point) return;
+      const labels = point.labels.includes(label) ? point.labels.filter((l) => l !== label) : [...point.labels, label];
+      handleAnnotationsChange({
+        ...cur,
+        points: cur.points.map((p) => (p.id === id ? { ...p, labels } : p)),
+      });
+    },
+    [handleAnnotationsChange],
+  );
+
+  const onTogglePoint = useCallback((id: string) => {
+    setSelectedPointId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const onSelectImage = useCallback((idx: number) => {
+    setImageIdx(idx);
+    setSelectedPointId(null);
+  }, []);
+
+  const onShowArchived = useCallback(() => setArchivedDialogOpen(true), []);
+
+  const handleAddCustomLabel = useCallback(async (label: string) => {
     try {
-      const updated = await addCustomLabel(selectedProject, label);
+      const updated = await addCustomLabel(selectedProjectRef.current, label);
       setAnnotations((prev) => ({ ...prev, additional_labels: updated }));
-      setNewLabelInput("");
     } catch (e) {
       setError(String(e));
     }
-  };
+  }, []);
 
-  const handleDeleteCustomLabel = async (label: string) => {
+  const handleDeleteCustomLabel = useCallback(async (label: string) => {
     try {
-      const updated = await deleteCustomLabel(selectedProject, label);
+      const updated = await deleteCustomLabel(selectedProjectRef.current, label);
       setAnnotations((prev) => ({
         ...prev,
         additional_labels: updated,
@@ -418,7 +433,7 @@ const App = () => {
     } catch (e) {
       setError(String(e));
     }
-  };
+  }, []);
 
   const handleDownloadJson = async () => {
     setExportAnchor(null);
@@ -661,92 +676,17 @@ const App = () => {
           <Divider />
 
           {/* Image list */}
-          <Box sx={{ px: 1.5, pt: 1, display: "flex", alignItems: "center", gap: 1 }}>
-            <Typography variant="subtitle2">Images</Typography>
-            <Chip label={`${processedCount}/${images.length}`} size="small" color="primary" />
-            {archivedImages.length > 0 && (
-              <Tooltip title="View / restore archived images">
-                <Chip
-                  label={`${archivedImages.length} archived`}
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setArchivedDialogOpen(true)}
-                  sx={{ cursor: "pointer" }}
-                />
-              </Tooltip>
-            )}
-          </Box>
-          <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
-            {images.map((img, idx) => {
-              const forkStatus = forkStatusByImage.get(img.id);
-              const hasAnyAnnotations = forkStatus?.hasAnyAnnotations ?? false;
-              const hasReplication = forkStatus?.hasReplication ?? false;
-              const hasReversed = forkStatus?.hasReversed ?? false;
-              return (
-                <ListItem
-                  key={img.id}
-                  disablePadding
-                  secondaryAction={
-                    <Tooltip title="Archive image (can be restored later)">
-                      <span>
-                        <IconButton
-                          edge="end"
-                          size="small"
-                          tabIndex={-1}
-                          disabled={!!error || pipelineStatus !== PipelineStatus.Done}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleArchiveImage(img.id);
-                          }}
-                        >
-                          <DeleteOutlineIcon sx={{ fontSize: 15 }} />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  }
-                >
-                  <ListItemButton
-                    selected={idx === imageIdx}
-                    onClick={() => {
-                      setImageIdx(idx);
-                      setSelectedPointId(null);
-                    }}
-                    sx={{ py: 0.25, pr: 4.5 }}
-                    disabled={!!error || pipelineStatus !== PipelineStatus.Done}
-                  >
-                    <ListItemIcon sx={{ minWidth: 28 }}>
-                      {img.processed ? (
-                        <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
-                      ) : (
-                        <RadioButtonUncheckedIcon sx={{ fontSize: 16 }} color="disabled" />
-                      )}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={img.name}
-                      primaryTypographyProps={{ variant: "body2", noWrap: true, fontSize: 12 }}
-                    />
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, ml: 0.5, flexShrink: 0 }}>
-                      {!hasAnyAnnotations && (
-                        <Tooltip title="No annotations">
-                          <HighlightOffIcon sx={{ fontSize: 14 }} color="disabled" />
-                        </Tooltip>
-                      )}
-                      {hasReplication && (
-                        <Tooltip title="Has replication forks">
-                          <CircleIcon sx={{ fontSize: 11, color: REPLICATION_FORK_GROUP.color }} />
-                        </Tooltip>
-                      )}
-                      {hasReversed && (
-                        <Tooltip title="Has reversed forks">
-                          <CircleIcon sx={{ fontSize: 11, color: REVERSED_FORK_GROUP.color }} />
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </ListItemButton>
-                </ListItem>
-              );
-            })}
-          </List>
+          <ImageListPanel
+            images={images}
+            archivedCount={archivedImages.length}
+            imageAnnotations={annotations.images}
+            imageIdx={imageIdx}
+            processedCount={processedCount}
+            disabled={!!error || pipelineStatus !== PipelineStatus.Done}
+            onSelectImage={onSelectImage}
+            onArchiveImage={handleArchiveImage}
+            onShowArchived={onShowArchived}
+          />
           <Divider />
         </Drawer>
 
@@ -1042,242 +982,17 @@ const App = () => {
                 pointerEvents: !!error || pipelineStatus !== PipelineStatus.Done ? "none" : "auto",
               }}
             >
-              <Box
-                sx={{
-                  px: 1.5,
-                  py: 1,
-                  borderBottom: 1,
-                  borderColor: "divider",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <Typography variant="subtitle2">Annotations</Typography>
-                <Chip label={currentAnnotations.points.length} size="small" />
-              </Box>
-
-              <List dense disablePadding sx={{ flex: 1, minHeight: 48, overflowY: "auto" }}>
-                {currentAnnotations.points.map((p, i) => {
-                  const sortedLabels = sortLabelsForDisplay(p.labels);
-                  return (
-                    <ListItem
-                      key={p.id}
-                      disablePadding
-                      secondaryAction={
-                        <IconButton edge="end" size="small" onClick={() => deletePoint(p.id)} tabIndex={-1}>
-                          <DeleteIcon sx={{ fontSize: 15 }} />
-                        </IconButton>
-                      }
-                    >
-                      <ListItemButton
-                        selected={p.id === selectedPointId}
-                        onClick={() => setSelectedPointId((prev) => (prev === p.id ? null : p.id))}
-                        sx={{ py: 0.25, pl: 1, pr: 4 }}
-                      >
-                        <ListItemIcon sx={{ minWidth: 22 }}>
-                          <Box sx={{ display: "flex", gap: 0.25, flexWrap: "wrap", maxWidth: 14 }}>
-                            {(sortedLabels.length > 0 ? sortedLabels : ["#9e9e9e"]).map((l, li) => (
-                              <Box
-                                key={li}
-                                sx={{
-                                  width: 8,
-                                  height: 8,
-                                  borderRadius: "50%",
-                                  bgcolor: sortedLabels.length > 0 ? labelColor(l) : l,
-                                  flexShrink: 0,
-                                }}
-                              />
-                            ))}
-                          </Box>
-                        </ListItemIcon>
-                        <Tooltip
-                          title={sortedLabels.length > 0 ? sortedLabels.join(", ") : "(unlabeled)"}
-                          placement="top"
-                        >
-                          <ListItemText
-                            primary={`${i + 1}. ${sortedLabels.length > 0 ? sortedLabels.join(", ") : "(unlabeled)"}`}
-                            secondary={`${Math.round(p.x)}, ${Math.round(p.y)}`}
-                            primaryTypographyProps={{ variant: "body2", fontSize: 12, noWrap: true }}
-                            secondaryTypographyProps={{ variant: "caption", fontFamily: "monospace", fontSize: 10 }}
-                            sx={{ minWidth: 0 }}
-                          />
-                        </Tooltip>
-                      </ListItemButton>
-                    </ListItem>
-                  );
-                })}
-              </List>
-
-              {/* Selected point: change labels */}
-              {selectedPoint && (
-                <React.Fragment>
-                  <Divider />
-                  <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
-                    <Box sx={{ minHeight: 0, overflowY: "auto" }}>
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
-                        {FORK_GROUPS.map((group) => {
-                          const active = selectedPoint.labels.includes(group.hundred)
-                            ? group.hundred
-                            : selectedPoint.labels.includes(group.fifty)
-                              ? group.fifty
-                              : null;
-                          const confidence = active === group.hundred ? "100%" : active === group.fifty ? "50%" : null;
-                          // 50% confidence uses the same lighter shade as the point marker on the canvas
-                          const activeColor = active ? labelColor(active) : group.color;
-                          return (
-                            <Button
-                              key={group.name}
-                              size="small"
-                              variant={active ? "contained" : "outlined"}
-                              onClick={() => cycleForkGroup(selectedPoint.id, group)}
-                              sx={{
-                                textTransform: "none",
-                                justifyContent: "flex-start",
-                                fontSize: 12,
-                                bgcolor: active ? activeColor : undefined,
-                                borderColor: activeColor,
-                                color: active ? "#fff" : activeColor,
-                                "&:hover": { bgcolor: activeColor, borderColor: activeColor, color: "#fff" },
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: "50%",
-                                  bgcolor: active ? "#fff" : activeColor,
-                                  mr: 1,
-                                  flexShrink: 0,
-                                }}
-                              />
-                              {group.name}
-                              {confidence ? ` (${confidence})` : ""}
-                            </Button>
-                          );
-                        })}
-                      </Box>
-
-                      {annotations.additional_labels.length > 0 && (
-                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 1 }}>
-                          {annotations.additional_labels.map((l) => {
-                            const active = selectedPoint.labels.includes(l);
-                            const color = labelColor(l);
-                            return (
-                              <Box key={l} sx={{ display: "flex", alignItems: "center", gap: 0.25, minWidth: 0 }}>
-                                <Tooltip title={l} placement="top">
-                                  <Button
-                                    size="small"
-                                    variant={active ? "contained" : "outlined"}
-                                    onClick={() => toggleLabel(selectedPoint.id, l)}
-                                    sx={{
-                                      flex: 1,
-                                      minWidth: 0,
-                                      textTransform: "none",
-                                      justifyContent: "flex-start",
-                                      fontSize: 12,
-                                      bgcolor: active ? color : undefined,
-                                      borderColor: color,
-                                      color: active ? "#fff" : color,
-                                      "&:hover": { bgcolor: color, borderColor: color, color: "#fff" },
-                                    }}
-                                  >
-                                    <Box
-                                      sx={{
-                                        width: 10,
-                                        height: 10,
-                                        borderRadius: "50%",
-                                        bgcolor: active ? "#fff" : color,
-                                        mr: 1,
-                                        flexShrink: 0,
-                                      }}
-                                    />
-                                    <Box
-                                      component="span"
-                                      sx={{
-                                        minWidth: 0,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {l}
-                                    </Box>
-                                  </Button>
-                                </Tooltip>
-                                <Tooltip title="Delete label from project">
-                                  <IconButton size="small" onClick={() => handleDeleteCustomLabel(l)}>
-                                    <DeleteIcon sx={{ fontSize: 15 }} />
-                                  </IconButton>
-                                </Tooltip>
-                              </Box>
-                            );
-                          })}
-                        </Box>
-                      )}
-                    </Box>
-
-                    <Box sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}>
-                      <TextField
-                        size="small"
-                        placeholder="New label"
-                        value={newLabelInput}
-                        onChange={(e) => setNewLabelInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAddCustomLabel();
-                        }}
-                        sx={{ flex: 1 }}
-                        inputProps={{ style: { fontSize: 12, padding: "4px 8px" } }}
-                      />
-                      <Tooltip title="Add project-wide custom label">
-                        <span>
-                          <IconButton size="small" onClick={handleAddCustomLabel} disabled={!newLabelInput.trim()}>
-                            <AddIcon fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                </React.Fragment>
-              )}
-
-              <Divider />
-              <Box
-                sx={{
-                  px: 1.5,
-                  py: 0.75,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-                onClick={() => setShowShortcuts((s) => !s)}
-              >
-                <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                  Instructions
-                </Typography>
-                <IconButton size="small" sx={{ p: 0.25 }}>
-                  {showShortcuts ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                </IconButton>
-              </Box>
-              {showShortcuts && (
-                <Box sx={{ px: 1.5, pb: 1.5, flexShrink: 0 }}>
-                  <Typography variant="caption" color="text.secondary" lineHeight={1.6}>
-                    <b>Click</b> image: add point
-                    <br />
-                    <b>Click / drag point</b>: select / move
-                    <br />
-                    <b>Drag</b>: pan &nbsp;|&nbsp; <b>Scroll</b>: zoom
-                    <br />
-                    <b>←/→</b>: navigate &nbsp;|&nbsp; <b>P</b>: set processed
-                    <br />
-                    <b>D / Delete</b>: delete selected point
-                    <br />
-                    <b>M</b>: toggle segmentation mask
-                  </Typography>
-                </Box>
-              )}
+              <AnnotationSidePanel
+                points={currentAnnotations.points}
+                selectedPointId={selectedPointId}
+                additionalLabels={annotations.additional_labels}
+                onTogglePoint={onTogglePoint}
+                onDeletePoint={deletePoint}
+                onCycleForkGroup={cycleForkGroup}
+                onToggleLabel={toggleLabel}
+                onAddCustomLabel={handleAddCustomLabel}
+                onDeleteCustomLabel={handleDeleteCustomLabel}
+              />
             </Box>
           </Box>
         </Box>

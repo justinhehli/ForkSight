@@ -95,7 +95,7 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Manage projects</DialogTitle>
       <DialogContent dividers sx={{ maxHeight: 420 }}>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>

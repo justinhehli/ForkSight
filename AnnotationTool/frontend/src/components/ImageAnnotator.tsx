@@ -43,7 +43,8 @@ interface Props {
   onSelectPoint: (id: string | null) => void;
 }
 
-const ImageAnnotator = ({
+// Memoized so re-renders elsewhere in App don't force this canvas to redraw
+const ImageAnnotatorComponent = ({
   project,
   imageId,
   imageName,
@@ -387,6 +388,10 @@ const ImageAnnotator = ({
 
       {/* Zoom controls */}
       <Box
+        // stop mousedown/up from reaching the container's pan/click handlers - otherwise a
+        // click here can register as a click on the image underneath and drop a new point
+        onMouseDown={(e) => e.stopPropagation()}
+        onMouseUp={(e) => e.stopPropagation()}
         sx={{
           position: "absolute",
           bottom: 12,
@@ -459,4 +464,4 @@ const ImageAnnotator = ({
   );
 };
 
-export default ImageAnnotator;
+export default React.memo(ImageAnnotatorComponent);
