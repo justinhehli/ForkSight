@@ -126,6 +126,23 @@ const ImageAnnotatorComponent = ({
   const [cursor, setCursor] = useState<string>("crosshair");
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
 
+  const [dragPreview, setDragPreview] = useState<{ id: string; x: number; y: number } | null>(null);
+  const dragPreviewRef = useRef(dragPreview);
+  useEffect(() => {
+    dragPreviewRef.current = dragPreview;
+  }, [dragPreview]);
+
+  const commitDragPreview = useCallback(() => {
+    const preview = dragPreviewRef.current;
+    if (!preview) return;
+    const cur = annRef.current;
+    onChangeRef.current({
+      ...cur,
+      points: cur.points.map((p) => (p.id === preview.id ? { ...p, x: preview.x, y: preview.y } : p)),
+    });
+    setDragPreview(null);
+  }, []);
+
   const hitPoint = (clientX: number, clientY: number) => {
     const container = containerRef.current;
     if (!container) return null;
@@ -182,11 +199,7 @@ const ImageAnnotatorComponent = ({
       const { w, h } = natRef.current;
       const nx = Math.round(Math.max(0, Math.min(w, (e.clientX - rect.left - panX) / zoom)));
       const ny = Math.round(Math.max(0, Math.min(h, (e.clientY - rect.top - panY) / zoom)));
-      const cur = annRef.current;
-      onChangeRef.current({
-        ...cur,
-        points: cur.points.map((p) => (p.id === drag.current.pointId ? { ...p, x: nx, y: ny } : p)),
-      });
+      setDragPreview({ id: drag.current.pointId, x: nx, y: ny });
     }
   }, []);
 
@@ -197,6 +210,7 @@ const ImageAnnotatorComponent = ({
     setCursor(hitPoint(e.clientX, e.clientY) ? "grab" : "crosshair");
 
     if (mode === "point") {
+      commitDragPreview();
       onSelectRef.current(pointId);
       return;
     }
@@ -276,6 +290,7 @@ const ImageAnnotatorComponent = ({
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onMouseLeave={() => {
+        commitDragPreview();
         drag.current.mode = "none";
         setDraggingPointId(null);
         setCursor("crosshair");
@@ -333,8 +348,11 @@ const ImageAnnotatorComponent = ({
         }}
       >
         {annotations.points.map((p) => {
-          const cx = p.x * zoom + panX;
-          const cy = p.y * zoom + panY;
+          const usePreview = dragPreview !== null && dragPreview.id === p.id;
+          const px = usePreview ? dragPreview.x : p.x;
+          const py = usePreview ? dragPreview.y : p.y;
+          const cx = px * zoom + panX;
+          const cy = py * zoom + panY;
           const selected = p.id === selectedPointId && p.id !== draggingPointId;
           // multiple labels are drawn as a small cluster of dots around the point
           const labels = p.labels.length > 0 ? sortLabelsForDisplay(p.labels) : [""];
