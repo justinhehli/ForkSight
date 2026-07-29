@@ -90,8 +90,8 @@ SEGMENTATION_TMP_DIR_PREFIX = "forksight_seg_"
 
 DEFAULT_TARGET_JUNCTION_COUNT = int(
     _get_env("DEFAULT_TARGET_JUNCTION_COUNT", "100"))
-DEFAULT_STAGED_SAMPLE_PERCENTAGE = float(
-    _get_env("DEFAULT_STAGED_SAMPLE_PERCENTAGE", "10"))
+DEFAULT_STAGED_SAMPLE_COUNT = int(
+    _get_env("DEFAULT_STAGED_SAMPLE_COUNT", "300"))
 
 
 def is_valid_project_dir(path: Path) -> bool:
@@ -137,19 +137,19 @@ def load_pipeline_settings(parent_dir: Path) -> dict:
         "pipeline_mode": data.get("pipeline_mode", "sequential"),
         "sequential_target_junction_count": data.get(
             "sequential_target_junction_count", DEFAULT_TARGET_JUNCTION_COUNT),
-        "staged_sample_percentage": data.get(
-            "staged_sample_percentage", DEFAULT_STAGED_SAMPLE_PERCENTAGE),
+        "staged_sample_count": data.get(
+            "staged_sample_count", DEFAULT_STAGED_SAMPLE_COUNT),
     }
 
 
 def save_pipeline_settings(
     parent_dir: Path, pipeline_mode: str, sequential_target_junction_count: int,
-    staged_sample_percentage: float,
+    staged_sample_count: int,
 ) -> None:
     data = _load_registry(parent_dir)
     data["pipeline_mode"] = pipeline_mode
     data["sequential_target_junction_count"] = sequential_target_junction_count
-    data["staged_sample_percentage"] = staged_sample_percentage
+    data["staged_sample_count"] = staged_sample_count
     _save_registry(parent_dir, data)
 
 

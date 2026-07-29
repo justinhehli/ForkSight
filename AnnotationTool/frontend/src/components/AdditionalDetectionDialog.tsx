@@ -35,13 +35,13 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
     setError(null);
 
     getPipelineSettings()
-      .then((s) => setAmount(isStaged ? s.staged_sample_percentage : s.sequential_target_junction_count))
+      .then((s) => setAmount(isStaged ? s.staged_sample_count : s.sequential_target_junction_count))
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const valid = typeof amount === "number" && amount > 0 && (!isStaged || amount <= 100);
+  const valid = typeof amount === "number" && amount > 0;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -64,13 +64,13 @@ const AdditionalDetectionDialog = ({ open, mode, onClose, onConfirm }: Props) =>
         ) : (
           <TextField
             autoFocus
-            label={isStaged ? "Percentage of total tiles to process" : "Number of additional forks to find"}
+            label={isStaged ? "Number of tiles to process" : "Number of additional forks to find"}
             type="number"
             size="small"
             value={amount}
             onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
             error={amount !== "" && !valid}
-            inputProps={isStaged ? { min: 1, max: 100 } : { min: 1 }}
+            inputProps={{ min: 1 }}
           />
         )}
       </DialogContent>

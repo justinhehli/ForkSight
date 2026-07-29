@@ -10,7 +10,6 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
-  InputAdornment,
   Radio,
   RadioGroup,
   TextField,
@@ -61,8 +60,7 @@ const PipelineSettingsDialog = ({ open, onClose }: Props) => {
   const invalid =
     !settings ||
     (settings.pipeline_mode === PipelineMode.Sequential && !(settings.sequential_target_junction_count > 0)) ||
-    (settings.pipeline_mode === PipelineMode.Staged &&
-      !(settings.staged_sample_percentage > 0 && settings.staged_sample_percentage <= 100));
+    (settings.pipeline_mode === PipelineMode.Staged && !(settings.staged_sample_count > 0));
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -114,15 +112,14 @@ const PipelineSettingsDialog = ({ open, onClose }: Props) => {
                   A random subsample of tiles is processed in full, regardless of the number of found forks.
                 </Typography>
                 <TextField
-                  label="Subsample size (percentage of all tiles)"
+                  label="Subsample size (number of tiles)"
                   type="number"
                   size="small"
                   sx={{ ml: 4, width: 280 }}
-                  value={settings.staged_sample_percentage}
-                  onChange={(e) => setSettings({ ...settings, staged_sample_percentage: Number(e.target.value) })}
-                  error={!(settings.staged_sample_percentage > 0 && settings.staged_sample_percentage <= 100)}
-                  inputProps={{ min: 1, max: 100 }}
-                  InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                  value={settings.staged_sample_count}
+                  onChange={(e) => setSettings({ ...settings, staged_sample_count: Number(e.target.value) })}
+                  error={!(settings.staged_sample_count > 0)}
+                  inputProps={{ min: 1 }}
                 />
               </Box>
             </RadioGroup>

@@ -103,16 +103,15 @@ def cleanup_stale_temp_dirs() -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
-def _sample_tiles(candidate_tiles: list[Path], sample_percentage: float, total_tile_count: int) -> list[Path]:
-    if not candidate_tiles or sample_percentage <= 0 or total_tile_count <= 0:
+def _sample_tiles(candidate_tiles: list[Path], sample_count: int) -> list[Path]:
+    if not candidate_tiles or sample_count <= 0:
         return []
 
-    sample_size = round(total_tile_count * sample_percentage / 100)
-    sample_size = max(1, min(sample_size, len(candidate_tiles)))
+    sample_size = min(sample_count, len(candidate_tiles))
     return random.sample(candidate_tiles, sample_size)
 
 
-def run_staged_junction_detection_pipeline(project_dir: Path, sample_percentage: float = 100) -> None:
+def run_staged_junction_detection_pipeline(project_dir: Path, sample_count: int) -> None:
     """segment a random subsample of not-yet-processed tiles, THEN detect junctions in all of them """
     project_dir = Path(project_dir)
     config = PipelineConfig()
@@ -125,10 +124,9 @@ def run_staged_junction_detection_pipeline(project_dir: Path, sample_percentage:
         t for t in all_tiles
         if t.relative_to(project_dir).as_posix() not in known_source_tifs
     ]
-    new_tiles = _sample_tiles(
-        candidate_tiles, sample_percentage, len(all_tiles))
-    logger.info("Found %d new tile(s) out of %d total, sampling %d (%.0f%% of total) to process in %s",
-                len(candidate_tiles), len(all_tiles), len(new_tiles), sample_percentage, project_dir)
+    new_tiles = _sample_tiles(candidate_tiles, sample_count)
+    logger.info("Found %d new tile(s) out of %d total, sampling %d to process in %s",
+                len(candidate_tiles), len(all_tiles), len(new_tiles), project_dir)
     if not new_tiles:
         logger.info("Nothing to do.")
         return

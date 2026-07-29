@@ -7,7 +7,7 @@ or sequential_worker.py, depending on --mode)
 
 Usage:
     python -m AnnotationTool.backend.pipeline.pipeline_runner --project-dir <path> \\
-        [--mode {sequential,staged}] [--target-junction-count N] [--sample-percentage P]
+        [--mode {sequential,staged}] [--target-junction-count N] [--sample-count N]
 """
 
 import argparse
@@ -21,7 +21,7 @@ from AnnotationTool.backend.pipeline.annotations_store import (
     save_annotations,
 )
 from AnnotationTool.backend.pipeline.discovery import (
-    DEFAULT_STAGED_SAMPLE_PERCENTAGE,
+    DEFAULT_STAGED_SAMPLE_COUNT,
     DEFAULT_TARGET_JUNCTION_COUNT,
 )
 
@@ -51,8 +51,8 @@ def main():
                         default=_MODE_SEQUENTIAL)
     parser.add_argument("--target-junction-count", type=int,
                         default=DEFAULT_TARGET_JUNCTION_COUNT)
-    parser.add_argument("--sample-percentage", type=float,
-                        default=DEFAULT_STAGED_SAMPLE_PERCENTAGE)
+    parser.add_argument("--sample-count", type=int,
+                        default=DEFAULT_STAGED_SAMPLE_COUNT)
     args = parser.parse_args()
     project_dir = Path(args.project_dir)
 
@@ -64,7 +64,7 @@ def main():
                 project_dir, args.target_junction_count)
         else:
             run_staged_junction_detection_pipeline(
-                project_dir, args.sample_percentage)
+                project_dir, args.sample_count)
 
         # reload annotations to make sure we have the current version here
         annotations = load_annotations(project_dir)

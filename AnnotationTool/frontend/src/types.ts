@@ -59,7 +59,7 @@ export enum PipelineMode {
 export interface PipelineSettings {
   pipeline_mode: PipelineMode;
   sequential_target_junction_count: number;
-  staged_sample_percentage: number;
+  staged_sample_count: number;
 }
 
 export interface Point {

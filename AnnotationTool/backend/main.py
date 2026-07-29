@@ -38,6 +38,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
     TOOL_ENVIRONMENT,
     TRAIN_PROJECT_NAME,
+    find_project_tiles,
     fork_detection_dir,
     list_candidate_dirs,
     load_pipeline_settings,
@@ -126,7 +127,7 @@ class CreateLabelWrapper(BaseModel):
 class PipelineSettingsModel(BaseModel):
     pipeline_mode: str
     sequential_target_junction_count: int
-    staged_sample_percentage: float
+    staged_sample_count: int
 
 
 # concurrency
@@ -246,13 +247,13 @@ def set_pipeline_settings(settings: PipelineSettingsModel) -> dict:
     if settings.sequential_target_junction_count <= 0:
         raise HTTPException(
             400, "sequential_target_junction_count must be positive")
-    if not (0 <= settings.staged_sample_percentage <= 100):
+    if settings.staged_sample_count <= 0:
         raise HTTPException(
-            400, "staged_sample_percentage must be in (0, 100]")
+            400, "staged_sample_count must be positive")
 
     save_pipeline_settings(
         PROJECTS_PARENT_DIR, settings.pipeline_mode, settings.sequential_target_junction_count,
-        settings.staged_sample_percentage)
+        settings.staged_sample_count)
     return load_pipeline_settings(PROJECTS_PARENT_DIR)
 
 
@@ -610,7 +611,7 @@ def _count_total_junctions(images: dict) -> float:
 class RunDetectionRequest(BaseModel):
     # Meaning depends on the project's pipeline mode:
     #   sequential -> additional total junctions to find this run
-    #   staged     -> percentage of the project's total tiles to sample in this run
+    #   staged     -> number of the project's tiles to sample in this run
     amount: float | None = None
 
 
@@ -632,7 +633,8 @@ def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectio
             if IS_TRAIN_ENV:
                 # TRAIN environment always runs staged over the full set of tiles
                 mode = PipelineMode.Staged
-                mode_args = ["--sample-percentage", "100"]
+                mode_args = ["--sample-count",
+                             str(len(find_project_tiles(pd)))]
             else:
                 # mode of project (if set before) trumps global default setting
                 mode = ann.get(
@@ -649,12 +651,12 @@ def run_junction_detection(project: str, body: RunDetectionRequest = RunDetectio
                     mode_args = ["--target-junction-count",
                                  str(target_junction_count)]
                 else:
-                    percentage = body.amount if body.amount is not None else global_settings[
-                        "staged_sample_percentage"]
-                    if percentage is None or not (0 < percentage <= 100):
+                    count = body.amount if body.amount is not None else global_settings[
+                        "staged_sample_count"]
+                    if count is None or count <= 0:
                         raise HTTPException(
-                            400, "amount (percentage) must be in (0, 100]")
-                    mode_args = ["--sample-percentage", str(percentage)]
+                            400, "amount (number of tiles) must be positive")
+                    mode_args = ["--sample-count", str(int(round(count)))]
 
             ann["pipeline_mode"] = mode
             ann["junction_detection_pipeline_status"] = PipelineStatus.Running

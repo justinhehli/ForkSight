@@ -74,7 +74,7 @@ source_dirs = [
 
 target_dir = "C:\\Users\\juhe9\\repos\\MasterThesis\\ForkSight\\Data\\RawData\\junction_detection_training_new"
 
-N_SAMPLES = 100
+N_SAMPLES = 400
 RANDOM_SEED = 42
 
 
