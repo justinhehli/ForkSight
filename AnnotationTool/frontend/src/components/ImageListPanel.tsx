@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   CheckCircle as CheckCircleIcon,
   Circle as CircleIcon,
@@ -6,7 +6,20 @@ import {
   HighlightOff as HighlightOffIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
 } from "@mui/icons-material";
-import { Box, Chip, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  Chip,
+  IconButton,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { FORK_GROUPS } from "../types";
 import type { ImageAnnotations, ImageMeta } from "../types";
 
@@ -106,6 +119,8 @@ interface Props {
   onShowArchived: () => void;
 }
 
+type ProcessedFilter = "all" | "unprocessed" | "processed";
+
 const ImageListPanel = memo(function ImageListPanel({
   images,
   archivedCount,
@@ -117,6 +132,16 @@ const ImageListPanel = memo(function ImageListPanel({
   onArchiveImage,
   onShowArchived,
 }: Props) {
+  const [filter, setFilter] = useState<ProcessedFilter>("all");
+
+  const visibleImages = useMemo(
+    () =>
+      images
+        .map((img, idx) => ({ img, idx }))
+        .filter(({ img }) => filter === "all" || (filter === "processed" ? img.processed : !img.processed)),
+    [images, filter],
+  );
+
   return (
     <>
       <Box sx={{ px: 1.5, pt: 1, display: "flex", alignItems: "center", gap: 1 }}>
@@ -134,8 +159,26 @@ const ImageListPanel = memo(function ImageListPanel({
           </Tooltip>
         )}
       </Box>
+      <Box sx={{ px: 1.5, pt: 0.75 }}>
+        <ToggleButtonGroup
+          value={filter}
+          exclusive
+          size="small"
+          onChange={(_e, value: ProcessedFilter | null) => value && setFilter(value)}
+          sx={{ "& .MuiToggleButton-root": { py: 0.25, px: 1, fontSize: 11, textTransform: "none" } }}
+        >
+          <ToggleButton value="all">All</ToggleButton>
+          <ToggleButton value="unprocessed">Unprocessed</ToggleButton>
+          <ToggleButton value="processed">Processed</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
       <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
-        {images.map((img, idx) => (
+        {visibleImages.length === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ px: 1.5, py: 1 }}>
+            No images match this filter.
+          </Typography>
+        )}
+        {visibleImages.map(({ img, idx }) => (
           <ImageListRow
             key={img.id}
             img={img}
