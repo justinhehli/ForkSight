@@ -22,14 +22,19 @@ from PIL import Image
 import Environment.env_utils as env_utils
 from Segmentation.PostProcessing.segmentation_postprocessing import (
     postprocess_segmentation_masks,
+    stitch_mask_tiles,
 )
 from JunctionDetection.SkeletonizeDetect.segmentation_junction_detection import (
     detect_junctions_in_segmentation_mask,
 )
-from Segmentation.Util.patch_grid_util import PATCH_SIZE, GRID_SIZE, N_PATCHES, load_binary_mask_pred_patches
+from Segmentation.Util.patch_grid_util import (
+    PATCH_SIZE, GRID_SIZE, load_binary_mask_pred_patches,
+    load_probability_pred_patches,
+)
 from AnnotationTool.backend.pipeline.discovery import (
     AUTOMATIC_FORK_DETECTION_DIR_NAME,
     SEGMENTATION_DIR_NAME,
+    SEGMENTATION_PROBABILITIES_DIR_NAME,
 )
 from AnnotationTool.backend.pipeline.progress_util import write_progress
 
@@ -37,7 +42,7 @@ JUNCTION_LABEL_3WAY = "Replication Fork 100%"
 JUNCTION_LABEL_4WAY = "Reversed Fork 100%"
 
 # pre-defined labels that can be set by human annotator in the UI
-# and count 0.5 to the sum of detected forks/junctions 
+# and count 0.5 to the sum of detected forks/junctions
 JUNCTION_LABEL_3WAY_50 = "Replication Fork 50%"
 JUNCTION_LABEL_4WAY_50 = "Reversed Fork 50%"
 
@@ -84,6 +89,9 @@ def main():
 
     seg_out_dir = project_dir / AUTOMATIC_FORK_DETECTION_DIR_NAME / SEGMENTATION_DIR_NAME
     seg_out_dir.mkdir(parents=True, exist_ok=True)
+    prob_out_dir = project_dir / AUTOMATIC_FORK_DETECTION_DIR_NAME / \
+        SEGMENTATION_PROBABILITIES_DIR_NAME
+    prob_out_dir.mkdir(parents=True, exist_ok=True)
 
     images = {}
     for i, tile in enumerate(tiles, start=1):
@@ -105,6 +113,19 @@ def main():
         # delete segmentation mask patches
         for p in pred_patch_paths:
             p.unlink(missing_ok=True)
+
+        prob_patches, prob_patch_paths = load_probability_pred_patches(
+            patch_dir, image_id)
+        stitched_prob = stitch_mask_tiles(
+            prob_patches, grid_size=GRID_SIZE,
+            original_input_patch_img_size=PATCH_SIZE, as_uint=False)
+        np.save(prob_out_dir / f"{image_id}.npy",
+                stitched_prob.squeeze(0).detach().cpu().numpy().astype(np.float32))
+
+        # delete probability patches (.npz) and their accompanying properties (.pkl)
+        for p in prob_patch_paths:
+            p.unlink(missing_ok=True)
+            p.with_suffix(".pkl").unlink(missing_ok=True)
 
         points = get_junction_points(stitched, tile["display_name"])
 

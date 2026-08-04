@@ -6,8 +6,8 @@ total junction count is reached (or tiles run out).
 
 Unlike the staged pipeline (segmentation_worker.py + detection_worker.py),
 which processes a whole batch of tiles before writing anything to
-annotations.json, this worker persists the stitched segmentation PNG and
-annotations.json after every single tile - so progress up to the point of a
+annotations.json, this worker persists the stitched segmentation PNG,
+probability map and annotations.json after every single tile - so progress up to the point of a
 crash or manual stop is never lost, and the loop can stop as soon as the
 target is hit without wasting time on tiles that turn out not to be needed.
 
@@ -44,6 +44,7 @@ from AnnotationTool.backend.pipeline.detection_worker import (
 )
 from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_DIR_NAME,
+    SEGMENTATION_PROBABILITIES_DIR_NAME,
     SEGMENTATION_TMP_DIR_PREFIX,
     find_project_tiles,
     fork_detection_dir,
@@ -52,6 +53,7 @@ from AnnotationTool.backend.pipeline.discovery import (
 from AnnotationTool.backend.pipeline.progress_util import write_progress
 from Segmentation.PostProcessing.segmentation_postprocessing import (
     postprocess_segmentation_masks,
+    stitch_mask_tiles,
 )
 from Segmentation.PreProcessing.General.preprocessing_util import create_patches_from_img
 from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png
@@ -59,6 +61,7 @@ from Segmentation.Util.patch_grid_util import (
     GRID_SIZE,
     PATCH_SIZE,
     load_binary_mask_pred_patches,
+    load_probability_pred_patches,
     nnunet_input_patch_filename,
 )
 
@@ -94,7 +97,7 @@ def _count_total_junctions(images: dict) -> float:
     )
 
 
-def _segment_tile(tile_path: Path, image_id: str, predictor) -> torch.Tensor:
+def _segment_tile(tile_path: Path, image_id: str, predictor) -> tuple[torch.Tensor, torch.Tensor]:
     with tempfile.TemporaryDirectory(prefix=SEGMENTATION_TMP_DIR_PREFIX) as tmp:
         tmp_dir = Path(tmp)
         png_path = tmp_dir / f"{image_id}.png"
@@ -109,7 +112,7 @@ def _segment_tile(tile_path: Path, image_id: str, predictor) -> torch.Tensor:
 
         patch_output_dir = tmp_dir / "pred"
         run_nnunet_predict_from_patches(
-            predictor, input_file_lists, patch_output_dir)
+            predictor, input_file_lists, patch_output_dir, save_probabilities=True)
 
         pred_patches, _ = load_binary_mask_pred_patches(
             patch_output_dir, image_id)
@@ -118,7 +121,14 @@ def _segment_tile(tile_path: Path, image_id: str, predictor) -> torch.Tensor:
             original_input_patch_img_size=PATCH_SIZE,
             remove_small_objects=True,
         )
-        return stitched.detach().cpu()
+
+        prob_patches, _ = load_probability_pred_patches(
+            patch_output_dir, image_id)
+        stitched_prob = stitch_mask_tiles(
+            prob_patches, grid_size=GRID_SIZE,
+            original_input_patch_img_size=PATCH_SIZE, as_uint=False)
+
+        return stitched.detach().cpu(), stitched_prob.detach().cpu()
 
 
 def main():
@@ -176,6 +186,9 @@ def main():
 
     seg_out_dir = fork_detection_dir(project_dir) / SEGMENTATION_DIR_NAME
     seg_out_dir.mkdir(parents=True, exist_ok=True)
+    prob_out_dir = fork_detection_dir(
+        project_dir) / SEGMENTATION_PROBABILITIES_DIR_NAME
+    prob_out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         for i, tile_path in enumerate(remaining_tiles, start=1):
@@ -186,10 +199,13 @@ def main():
             source_tif = tile_path.relative_to(project_dir).as_posix()
             display_name = get_tile_display_name(tile_path)
 
-            stitched = _segment_tile(tile_path, image_id, predictor)
+            stitched, stitched_prob = _segment_tile(
+                tile_path, image_id, predictor)
 
             mask_arr = (stitched.squeeze(0).numpy() * 255).astype(np.uint8)
             Image.fromarray(mask_arr).save(seg_out_dir / f"{image_id}.png")
+            np.save(prob_out_dir / f"{image_id}.npy",
+                    stitched_prob.squeeze(0).numpy().astype(np.float32))
 
             points = get_junction_points(stitched, display_name)
 

@@ -82,6 +82,7 @@ REGISTRY_FILENAME = _get_env(
 TILE_GLOB_PATTERN = "*.tif" if IS_TRAIN_ENV else "LayersData/highmag/Tile Set (*)/*.tif"
 
 SEGMENTATION_DIR_NAME = "Segmentation"
+SEGMENTATION_PROBABILITIES_DIR_NAME = "SegmentationProbabilities"
 SEGMENTATION_PATCHES_DIR_NAME = "SegmentationPatches"
 
 PIPELINE_TMP_DIR_PREFIX = "forksight_pipeline_"

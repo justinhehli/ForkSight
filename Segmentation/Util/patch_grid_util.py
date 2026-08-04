@@ -21,6 +21,10 @@ def nnunet_input_patch_filename(image_stem: str, idx: int) -> str:
     return f"{patch_stem(image_stem, idx)}_0000.png"
 
 
+def pred_patch_probability_filename(image_stem: str, idx: int) -> str:
+    return f"{patch_stem(image_stem, idx)}.npz"
+
+
 def load_binary_mask_pred_patches(pred_dir: Path, image_stem: str, n_patches: int = N_PATCHES) -> torch.Tensor:
     patches, patch_paths = [], []
     for idx in range(n_patches):
@@ -30,5 +34,21 @@ def load_binary_mask_pred_patches(pred_dir: Path, image_stem: str, n_patches: in
             arr = arr[..., 0]
         mask = torch.from_numpy((arr > 0).astype(np.float32)).unsqueeze(0)
         patches.append(mask)
+        patch_paths.append(patch_path)
+    return torch.stack(patches), patch_paths
+
+
+def load_probability_pred_patches(
+    pred_dir: Path, image_stem: str, n_patches: int = N_PATCHES, foreground_channel: int = 1,
+) -> tuple[torch.Tensor, list[Path]]:
+    """Load per-patch nnU-Net foreground probability maps, as written to
+    pred_dir by run_nnunet_predict_from_patches(..., save_probabilities=True).
+    """
+    patches, patch_paths = [], []
+    for idx in range(n_patches):
+        patch_path = Path(pred_dir) / \
+            pred_patch_probability_filename(image_stem, idx)
+        probs = np.load(patch_path)["probabilities"][foreground_channel]
+        patches.append(torch.from_numpy(probs.astype(np.float32)).unsqueeze(0))
         patch_paths.append(patch_path)
     return torch.stack(patches), patch_paths

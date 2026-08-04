@@ -9,7 +9,8 @@ Usage (must be invoked with the pipeline venv's python, from the repo root):
     python -m AnnotationTool.backend.pipeline.segmentation_worker \\
         --project-dir <base folder> \\
         --manifest <manifest.json listing tiles to process> \\
-        --patch-output-dir <dir to write binary 0/255 nnU-Net prediction patches> \\
+        --patch-output-dir <dir to write binary 0/255 nnU-Net prediction patches, \\
+                            plus per-patch probability .npz/.pkl files> \\
         --model-dir <local directory with the pretrained nnU-Net model> \\
         [--device 0]
 
@@ -154,7 +155,7 @@ def main():
         progress_thread.start()
         try:
             run_nnunet_predict_from_patches(
-                predictor, input_file_lists, patch_output_dir)
+                predictor, input_file_lists, patch_output_dir, save_probabilities=True)
         finally:
             stop_event.set()
             progress_thread.join()

@@ -130,19 +130,24 @@ def run_nnunet_predict_from_patches(
     predictor,
     patch_file_lists: list[list[str]],
     output_dir: Path,
+    save_probabilities: bool = False,
 ) -> None:
     """Run nnUNet inference on pre-saved patch PNGs and write (0/255)
     prediction PNGs to output_dir, named after the input patch files.
 
     patch_file_lists : one-item-per-channel file lists, as required by
                         nnUNetPredictor.predict_from_files (one entry per patch).
+    save_probabilities : if True, additionally write a per-patch .npz (softmax
+                        probabilities, under the "probabilities" key, shape
+                        (num_classes, H, W)) and .pkl (properties) file
+                        alongside each PNG.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     predictor.predict_from_files(
         patch_file_lists,
         str(output_dir),
-        save_probabilities=False,
+        save_probabilities=save_probabilities,
         overwrite=True,
         num_processes_preprocessing=2,
         num_processes_segmentation_export=2,
