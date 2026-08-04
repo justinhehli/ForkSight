@@ -23,6 +23,13 @@ import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 
+# Re-running segmentation for every processed image writes/deletes a lot of
+# per-patch npz/pkl scratch data; point tempfile at a dedicated scratch dir
+# (instead of the regular, often small/tmpfs-backed /tmp) before anything
+# below calls tempfile.gettempdir() / tempfile.TemporaryDirectory().
+SCRATCH_TMP_DIR = Path("/mnt/scratch")
+tempfile.tempdir = str(SCRATCH_TMP_DIR)
+
 from AnnotationTool.backend.pipeline.annotations_store import load_annotations
 from AnnotationTool.backend.pipeline.discovery import (
     SEGMENTATION_PROBABILITIES_DIR_NAME,

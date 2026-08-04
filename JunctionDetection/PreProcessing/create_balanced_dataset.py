@@ -24,13 +24,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png, save_image_as_png
+
 ANNOTATIONS_CSV_NAME = "annotations.csv"
 FORK_LABELS = ("Normal Fork", "Reversed Fork")
 CROSSING_LABEL = "Crossing"
 NEGATIVE_LABEL = "Negative"
 
 
-def load_and_clean(csv_path: Path) -> pd.DataFrame:
+def load_and_clean_csv_data(csv_path: Path) -> pd.DataFrame:
     """Load annotations.csv and drop exact duplicate rows."""
     df = pd.read_csv(csv_path)
     before = len(df)
@@ -57,7 +59,11 @@ def copy_referenced_files(image_names, dataset_dir: Path, dest_dir: Path, subfol
             missing.append(name)
             continue
         for match in matches:
-            shutil.copy2(match, dest_dir / match.name)
+            if match.suffix == '.tif':
+                png_img = convert_tif_to_png(match)
+                save_image_as_png(png_img, dest_dir, match.stem + '.png')
+            else:
+                shutil.copy2(match, dest_dir / match.name)
         copied.append(name)
 
     return copied, missing
@@ -114,7 +120,7 @@ def main():
 
     rng = np.random.RandomState(args.seed)
 
-    df = load_and_clean(args.input / ANNOTATIONS_CSV_NAME)
+    df = load_and_clean_csv_data(args.input / ANNOTATIONS_CSV_NAME)
     print("Input label counts:")
     print(df['label'].value_counts().to_string())
 
