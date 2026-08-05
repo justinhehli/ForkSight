@@ -92,6 +92,7 @@ def _count_total_junctions(images: dict) -> float:
     return sum(
         _JUNCTION_WEIGHTS.get(l, 0.0)
         for img in images.values()
+        if not img.get("archived", False)
         for p in img.get("points", [])
         for l in p.get("labels", [])
     )
