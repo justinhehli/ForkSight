@@ -417,15 +417,18 @@ def _active_images(images: dict) -> dict:
 
 
 def _compute_summary(images: dict) -> dict:
-    all_points = [p for img_ann in images.values()
-                  for p in img_ann.get("points", [])]
+    # Fork counts only consider processed images - unprocessed images may still
+    # be mid-annotation and would skew the counts.
+    processed_points = [p for img_ann in images.values()
+                        if img_ann.get("processed", False)
+                        for p in img_ann.get("points", [])]
     replication_forks = sum(
         FORK_WEIGHTS.get(l, 0.0)
-        for p in all_points for l in p.get("labels", [])
+        for p in processed_points for l in p.get("labels", [])
         if l in REPLICATION_FORK_LABELS)
     reversed_forks = sum(
         FORK_WEIGHTS.get(l, 0.0)
-        for p in all_points for l in p.get("labels", [])
+        for p in processed_points for l in p.get("labels", [])
         if l in REVERSED_FORK_LABELS)
     processed_count = sum(1 for img_ann in images.values()
                           if img_ann.get("processed", False))
@@ -486,11 +489,11 @@ def export_project_excel(project: str):
     ws.cell(row=ws.max_row, column=1).font = bold
     ws.append(["Total images", summary["total_images"]])
     ws.append(["Processed images", summary["processed_images"]])
-    ws.append(["Replication fork weighted count",
+    ws.append(["Replication fork weighted count (processed images only)",
               summary["replication_fork_weighted_count"]])
-    ws.append(["Reversed fork weighted count",
+    ws.append(["Reversed fork weighted count (processed images only)",
               summary["reversed_fork_weighted_count"]])
-    ws.append(["Replication / reversed ratio",
+    ws.append(["Replication / reversed ratio (processed images only)",
               summary["replication_reversed_ratio"]])
     ws.append([])
 

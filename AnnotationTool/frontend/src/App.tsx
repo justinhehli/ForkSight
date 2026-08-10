@@ -148,8 +148,10 @@ const App = () => {
       return { replicationForks: 0, reversedForks: 0, ratio: "—" };
     }
 
+    // Fork counts only consider processed images - unprocessed images may still
+    // be mid-annotation and would skew the counts.
     const allPoints = Object.values(annotations.images)
-      .filter((a) => !a.archived)
+      .filter((a) => !a.archived && a.processed)
       .flatMap((a) => a.points);
     const replicationGroup = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
     const reversedGroup = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
@@ -1027,14 +1029,14 @@ const App = () => {
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
-              Replication forks (weighted)
+              Replication forks (weighted, processed only)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.replicationForks.toFixed(1)}
             </Typography>
 
             <Typography variant="body2" color="text.secondary">
-              Reversed forks (weighted)
+              Reversed forks (weighted, processed only)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.reversedForks.toFixed(1)}
@@ -1043,7 +1045,7 @@ const App = () => {
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
-              Replication / reversed ratio
+              Replication / reversed ratio (processed only)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.ratio}
