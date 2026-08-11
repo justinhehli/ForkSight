@@ -10,8 +10,8 @@ not on image files:
      image name per line); drop the rest.
 
 Does not modify the input dataset - writes a full copy (balanced
-annotations.csv plus the images/ and segmentation/ files still referenced
-afterwards) to the given --output directory.
+annotations.csv plus the images/, segmentation/, segmentation_probabilities/
+files still referenced afterwards) to the given --output directory.
 
 Usage:
     python create_balanced_dataset.py --input <dataset_dir> --negatives <negatives_file> --output <output_dir>
@@ -23,13 +23,22 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import tifffile
+from skimage.transform import resize
 
-from Segmentation.PreProcessing.General.tif_to_png import convert_tif_to_png, save_image_as_png
 
 ANNOTATIONS_CSV_NAME = "annotations.csv"
 FORK_LABELS = ("Normal Fork", "Reversed Fork")
 CROSSING_LABEL = "Crossing"
 NEGATIVE_LABEL = "Negative"
+
+IMAGES_SUBDIR = "images"
+SEGMENTATION_SUBDIR = "segmentation"
+SEGMENTATION_PROBABILITIES_SUBDIR = "segmentation_probabilities"
+
+TARGET_SIZE = 4096
+LEGACY_SIZE = 4000
+RESIZABLE_SUFFIXES = {".tif", ".tiff", ".npy"}
 
 
 def load_and_clean_csv_data(csv_path: Path) -> pd.DataFrame:
@@ -43,8 +52,56 @@ def load_and_clean_csv_data(csv_path: Path) -> pd.DataFrame:
     return df
 
 
+def _load_array(path: Path) -> np.ndarray:
+    if path.suffix.lower() == ".npy":
+        return np.load(path)
+    return tifffile.imread(path)
+
+
+def _save_array(path: Path, arr: np.ndarray) -> None:
+    if path.suffix.lower() == ".npy":
+        np.save(path, arr)
+    else:
+        tifffile.imwrite(path, arr)
+
+
+def _ensure_target_size(path: Path) -> None:
+    """Resize a .tif/.npy file at path to TARGET_SIZE x TARGET_SIZE in place if it's LEGACY_SIZE x LEGACY_SIZE.
+
+    Leaves other file types untouched. Raises if a .tif/.npy file's dimensions
+    are neither TARGET_SIZE nor LEGACY_SIZE.
+    """
+    if path.suffix.lower() not in RESIZABLE_SUFFIXES:
+        return
+
+    arr = _load_array(path)
+    if arr.ndim != 2:
+        raise ValueError(f"Expected a 2D array for {path}, got shape {arr.shape}")
+
+    shape = arr.shape
+    if shape == (TARGET_SIZE, TARGET_SIZE):
+        return
+    if shape != (LEGACY_SIZE, LEGACY_SIZE):
+        raise ValueError(
+            f"Unexpected dimensions {shape} for {path}; expected "
+            f"({TARGET_SIZE}, {TARGET_SIZE}) or ({LEGACY_SIZE}, {LEGACY_SIZE})")
+
+    resized = resize(
+        arr,
+        (TARGET_SIZE, TARGET_SIZE),
+        # bilinear; avoids blocky (order=0) or overshoot (order=3) artifacts
+        order=1,
+        mode='reflect',
+        anti_aliasing=True,
+        preserve_range=True,
+    ).astype(arr.dtype)
+    _save_array(path, resized)
+
+
 def copy_referenced_files(image_names, dataset_dir: Path, dest_dir: Path, subfolder: str) -> tuple[list[str], list[str]]:
     """Copy each image's file from dataset_dir/subfolder into dest_dir, matching by stem (any extension).
+
+    .tif/.npy files are resized in place to TARGET_SIZE x TARGET_SIZE if they're LEGACY_SIZE x LEGACY_SIZE.
 
     Returns (copied_names, missing_names).
     """
@@ -59,11 +116,9 @@ def copy_referenced_files(image_names, dataset_dir: Path, dest_dir: Path, subfol
             missing.append(name)
             continue
         for match in matches:
-            if match.suffix == '.tif':
-                png_img = convert_tif_to_png(match)
-                save_image_as_png(png_img, dest_dir, match.stem + '.png')
-            else:
-                shutil.copy2(match, dest_dir / match.name)
+            dest_path = dest_dir / match.name
+            shutil.copy2(match, dest_path)
+            _ensure_target_size(dest_path)
         copied.append(name)
 
     return copied, missing
@@ -109,7 +164,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", required=True, type=Path,
-                        help="Path to a dataset directory with annotations.csv, images/ and segmentation/")
+                        help="Path to a dataset directory with annotations.csv, images/, segmentation/, segmentation_probabilities/")
     parser.add_argument("--negatives", required=True, type=Path,
                         help="Path to a text file listing (one per line) the image names of Negative samples to keep")
     parser.add_argument("--output", required=True, type=Path,
@@ -138,7 +193,7 @@ def main():
     print(f"\nWrote {len(df)} rows to {output_csv}")
 
     image_names = df['image'].dropna().unique()
-    for subfolder in ("images", "segmentation"):
+    for subfolder in (IMAGES_SUBDIR, SEGMENTATION_SUBDIR, SEGMENTATION_PROBABILITIES_SUBDIR):
         copied, missing = copy_referenced_files(
             image_names, args.input, args.output / subfolder, subfolder)
         print(f"Copied {len(copied)} files to {args.output / subfolder}")

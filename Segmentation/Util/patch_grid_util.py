@@ -49,6 +49,10 @@ def load_probability_pred_patches(
         patch_path = Path(pred_dir) / \
             pred_patch_probability_filename(image_stem, idx)
         probs = np.load(patch_path)["probabilities"][foreground_channel]
+        # nnU-Net's 2D pipeline keeps a pseudo depth axis (shape (1, H, W));
+        # drop it so each patch is a plain (H, W) map before stacking.
+        if probs.ndim == 3:
+            probs = probs[0]
         patches.append(torch.from_numpy(probs.astype(np.float32)).unsqueeze(0))
         patch_paths.append(patch_path)
     return torch.stack(patches), patch_paths
