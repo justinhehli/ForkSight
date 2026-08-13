@@ -20,6 +20,8 @@ export nnLM_raw="/home/jhehli/data/datasets/nnLandmark/nnLM_raw/"
 export nnLM_preprocessed="/home/jhehli/data/datasets/nnLandmark/nnLM_preprocessed/"
 export nnLM_results="/home/jhehli/data/datasets/nnLandmark/nnLM_results/"
 
+export PYTHONUNBUFFERED=1
+
 : "${FOLD:?FOLD env var is required (0-4)}"
 
 echo "CWD: $(pwd)"
