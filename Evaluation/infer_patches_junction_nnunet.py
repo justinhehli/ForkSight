@@ -82,6 +82,8 @@ def main():
                         help="Only infer the first test image per model")
     parser.add_argument("--force-rerun", action="store_true",
                         help="Re-run inference even if output already exists")
+    parser.add_argument("--save-probs", action="store_true",
+                        help="save probability maps")
     args = parser.parse_args()
 
     env_utils.load_forksight_env()
@@ -139,9 +141,9 @@ def main():
                       f"(use --force-rerun to override)")
                 continue
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Inferring nnUNet: {model_key}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             print(f"  Downloading artifact from {WANDB_NNUNET_PROJECT}")
             model_dir = download_nnunet_artifact(
@@ -178,7 +180,7 @@ def main():
             print(
                 f"  Running predict_from_files on {len(input_file_lists)} patches")
             run_nnunet_predict_from_patches(
-                predictor, input_file_lists, model_pred_dir)
+                predictor, input_file_lists, model_pred_dir, args.save_probs)
 
             del predictor
             torch.cuda.empty_cache()
