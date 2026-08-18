@@ -167,7 +167,7 @@ def main():
 
     nnLM_model_dir = Path(NNLM_MODEL_DIR)
     nnLM_in_dir = Path(NNLM_MODEL_INPUT_DIR)
-    nnLM_out_dir = Path(NNLM_MODEL_INPUT_DIR)
+    nnLM_out_dir = Path(NNLM_MODEL_OUTPUT_DIR)
     assert nnLM_model_dir.is_dir() and nnLM_in_dir.is_dir() and nnLM_out_dir.is_dir()
 
     assert torch.cuda.is_available(), "torch CUDA is not available"

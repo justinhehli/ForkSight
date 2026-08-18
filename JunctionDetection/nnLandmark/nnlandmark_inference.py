@@ -6,7 +6,7 @@ import torch
 from PIL import Image
 
 # assumes nnlandmark is installed
-from nnlandmark.inference.predict_from_raw_data import nnUNetPredictor
+from nnlandmark.inference.nnLandmark.predict_from_raw_data import nnUNetPredictor
 
 
 NNLM_DEFAULT_FOLDS = (0, 1, 2, 3, 4)
@@ -51,12 +51,12 @@ def nnlandmark_predict_from_files(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     predictor.predict_from_files(
-        input_dir,
+        str(input_dir),
         str(output_dir),
         save_probabilities=save_probabilities,
         overwrite=True,
-        num_processes_preprocessing=2,
-        num_processes_segmentation_export=2,
+        num_processes_preprocessing=3,
+        num_processes_segmentation_export=3,
     )
 
 
