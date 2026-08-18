@@ -161,6 +161,10 @@ def main():
                         help="whether this is just a test run that only preprocesses (and thus predicts) one sample")
     args = parser.parse_args()
 
+    os.environ["nnLM_raw"] = "/home/jhehli/data/datasets/nnLandmark/nnLM_raw"
+    os.environ["nnLM_preprocessed"] = "/home/jhehli/data/datasets/nnLandmark/nnLM_preprocessed"
+    os.environ["nnLM_results"] = "/home/jhehli/data/datasets/nnLandmark/nnLM_results"
+
     env_utils.load_forksight_env()
     JUNCTION_MATCHING_THRESHOLD = env_utils.load_as(
         "JUNCTION_MATCHING_THRESHOLD", float, 75.0)
