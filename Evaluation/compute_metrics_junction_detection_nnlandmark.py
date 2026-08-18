@@ -11,7 +11,7 @@ import torch
 import Environment.env_utils as env_utils
 from Evaluation.compute_metrics_junction_detection import _load_gt_annotations
 from JunctionDetection.nnLandmark.nnlandmark_inference import initialize_nnlandmark_predictor, nnlandmark_predict_from_files
-from Segmentation.PostProcessing.segmentation_postprocessing import postprocess_segmentation_masks, stitch_mask_tiles
+from Segmentation.PostProcessing.segmentation_postprocessing import stitch_mask_tiles
 from Segmentation.Util.patch_grid_util import GRID_SIZE, PATCH_SIZE, load_probability_pred_patches
 
 
@@ -30,7 +30,7 @@ NNLM_MODEL_INPUT_DIR = "/home/jhehli/data/nnLM_eval/model_input"
 NNLM_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnLM_eval/model_output"
 
 
-def _check_init_paths(seg_model: str, do_plot: bool):
+def _check_init_paths(seg_model: str):
     EVALUATION_OUTPUT_DIR = os.getenv("EVALUATION_OUTPUT_DIR")
     JUNCTION_DETECTION_DATASET_DIR = os.getenv(
         "JUNCTION_DETECTION_DATASET_DIR")
@@ -69,8 +69,8 @@ def _check_init_paths(seg_model: str, do_plot: bool):
     eval_out_dir = Path(EVALUATION_OUTPUT_DIR) / \
         "junction_detection_nnLM" / timestamp
     eval_out_dir.mkdir(parents=True)
-    eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
-    eval_out_plt_dir.mkdir()
+    #eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
+    #eval_out_plt_dir.mkdir()
 
     return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir
 
@@ -172,8 +172,7 @@ def main():
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
-    test_tifs_paths, test_labels_csv, seg_pred_dir = _check_init_paths(
-        args.seg_model, args.plot)
+    test_tifs_paths, test_labels_csv, seg_pred_dir = _check_init_paths(args.seg_model)
     gt_by_image = _load_gt_annotations(test_labels_csv)
 
     # stitch, resize and copy segmentation probability maps,
