@@ -69,8 +69,8 @@ def _check_init_paths(seg_model: str):
     eval_out_dir = Path(EVALUATION_OUTPUT_DIR) / \
         "junction_detection_nnLM" / timestamp
     eval_out_dir.mkdir(parents=True)
-    #eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
-    #eval_out_plt_dir.mkdir()
+    # eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
+    # eval_out_plt_dir.mkdir()
 
     return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir
 
@@ -95,7 +95,7 @@ def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str,
     # load segmentation probability map patches and stitch them
     seg_prob_map_patches, _ = load_probability_pred_patches(
         seg_pred_dir, img_stem)
-    stitched_seg_prob_map, _ = stitch_mask_tiles(
+    stitched_seg_prob_map = stitch_mask_tiles(
         seg_prob_map_patches, grid_size=GRID_SIZE,
         original_input_patch_img_size=PATCH_SIZE,
         as_uint=False,
@@ -172,7 +172,8 @@ def main():
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
-    test_tifs_paths, test_labels_csv, seg_pred_dir, _ = _check_init_paths(args.seg_model)
+    test_tifs_paths, test_labels_csv, seg_pred_dir, _ = _check_init_paths(
+        args.seg_model)
     gt_by_image = _load_gt_annotations(test_labels_csv)
 
     # stitch, resize and copy segmentation probability maps,
