@@ -172,7 +172,7 @@ def main():
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
-    test_tifs_paths, test_labels_csv, seg_pred_dir = _check_init_paths(args.seg_model)
+    test_tifs_paths, test_labels_csv, seg_pred_dir, _ = _check_init_paths(args.seg_model)
     gt_by_image = _load_gt_annotations(test_labels_csv)
 
     # stitch, resize and copy segmentation probability maps,
