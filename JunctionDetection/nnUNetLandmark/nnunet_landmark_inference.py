@@ -38,8 +38,7 @@ def initialize_nnunet_landmark_predictor(
     checkpoint: str = NNUNET_LANDMARK_DEFAULT_CHECKPOINT,
 ) -> nnUNetPredictor:
     predictor, _ = initialize_nnunet_predictor(
-        model_dir, device=device, folds=folds, checkpoint=checkpoint
-        # ,ensure_custom_trainer_file=True
+        model_dir, device=device, folds=folds, checkpoint=checkpoint, ensure_custom_trainer_file=True
     )
     return predictor
 
