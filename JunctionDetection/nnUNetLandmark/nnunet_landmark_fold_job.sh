@@ -20,6 +20,8 @@ export nnUNet_raw="/home/jhehli/data/datasets/nnUNet/nnUNet_raw"
 export nnUNet_preprocessed="/home/jhehli/data/datasets/nnUNet/nnUNet_preprocessed"
 export nnUNet_results="/home/jhehli/data/datasets/nnUNet/nnUNet_results"
 
+export PYTHONUNBUFFERED=1
+
 # Hardcoded, not read from Environment/.env - must match NNUNET_LANDMARK_DATASET_ID in
 # JunctionDetection/PreProcessing/create_nnunet_heatmap_dataset.py and NNUNET_LANDMARK_MODEL_DIR in
 # Evaluation/compute_metrics_junction_detection_nnunet_landmark.py
