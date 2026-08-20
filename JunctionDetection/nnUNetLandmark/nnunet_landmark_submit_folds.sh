@@ -7,7 +7,8 @@
 #   bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
 #
 # TRAINER options:
-#   nnUNetTrainerHeatmapMSE  (default)
+#   nnUNetTrainerHeatmapMSE (default) - MSE loss (Nonlin_MSE_loss)
+#   nnUNetTrainerHeatmapAdaptiveWing  - Adaptive Wing loss (see nnUNet/nnunetv2/training/loss/adaptive_wing.py)
 #
 # To override the number of folds (default 5):
 #   NUM_FOLDS=3 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
@@ -20,9 +21,9 @@ JOB_SCRIPT="${SCRIPT_DIR}/nnunet_landmark_fold_job.sh"
 NUM_FOLDS="${NUM_FOLDS:-5}"
 TRAINER="${1:-nnUNetTrainerHeatmapMSE}"
 
-if [[ "$TRAINER" != "nnUNetTrainerHeatmapMSE" ]]; then
+if [[ "$TRAINER" != "nnUNetTrainerHeatmapMSE" && "$TRAINER" != "nnUNetTrainerHeatmapAdaptiveWing" ]]; then
     echo "Error: unknown trainer '${TRAINER}'"
-    echo "Valid options: nnUNetTrainerHeatmapMSE"
+    echo "Valid options: nnUNetTrainerHeatmapMSE, nnUNetTrainerHeatmapAdaptiveWing"
     exit 1
 fi
 
