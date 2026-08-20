@@ -7,7 +7,8 @@ import {
   ProjectCandidate,
 } from "./types";
 
-const BASE = "http://localhost:8000";
+// const BASE = "http://localhost:8000";
+const BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
 
 const encodeProjectPath = (project: string) => project.split("/").map(encodeURIComponent).join("/");
 
