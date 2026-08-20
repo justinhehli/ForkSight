@@ -10,7 +10,7 @@ import torch
 
 import Environment.env_utils as env_utils
 from Evaluation.compute_metrics_junction_detection import _load_gt_annotations
-from JunctionDetection.nnLandmark.nnlandmark_inference import initialize_nnlandmark_predictor, nnlandmark_predict_from_files
+from JunctionDetection.nnUNetLandmark.nnunet_landmark_inference import initialize_nnunet_landmark_predictor, nnunet_landmark_predict_from_files
 from Segmentation.PostProcessing.segmentation_postprocessing import stitch_mask_tiles
 from Segmentation.Util.patch_grid_util import GRID_SIZE, PATCH_SIZE, load_probability_pred_patches
 
@@ -19,15 +19,18 @@ _JUNCTION_TYPE_3_WAY = "3-way"
 _JUNCTION_TYPE_4_WAY = "4-way"
 
 NNUNET_SEG_STITCHED_SIZE = 4096
-NNLM_INPUT_SIZE = 1024
+NNUNET_LANDMARK_INPUT_SIZE = 1024
 
 RAW_CHANNEL_ID = "0000"
 SEGPROB_CHANNEL_ID = "0001"
 TIF_FILE_ENDING = ".tif"
 
-NNLM_MODEL_DIR = "/home/jhehli/data/datasets/nnLandmark/nnLM_results/Dataset001_JunctionDetection_v1_nnLandmark/nnLandmark__nnUNetPlans__2d"
-NNLM_MODEL_INPUT_DIR = "/home/jhehli/data/nnLM_eval/model_input"
-NNLM_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnLM_eval/model_output"
+# hardcoded dataset ID must match NNUNET_LANDMARK_DATASET_ID in
+# JunctionDetection/PreProcessing/create_nnunet_heatmap_dataset.py and
+# JunctionDetection/nnUNetLandmark/nnunet_landmark_fold_job.sh
+NNUNET_LANDMARK_MODEL_DIR = "/home/jhehli/data/datasets/nnUNet/nnUNet_results/Dataset011_JunctionDetection_v1/nnUNetTrainerHeatmapMSE__nnUNetPlans__2d"
+NNUNET_LANDMARK_MODEL_INPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_input"
+NNUNET_LANDMARK_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_output"
 
 
 def _check_init_paths(seg_model: str):
@@ -67,7 +70,7 @@ def _check_init_paths(seg_model: str):
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     eval_out_dir = Path(EVALUATION_OUTPUT_DIR) / \
-        "junction_detection_nnLM" / timestamp
+        "junction_detection_nnUNetLandmark" / timestamp
     eval_out_dir.mkdir(parents=True)
     # eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
     # eval_out_plt_dir.mkdir()
@@ -91,7 +94,7 @@ def _sanitize_case_id(img_name: str) -> str:
     return img_name.replace("_", "-").replace(" ", "-")
 
 
-def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str, nnLM_input_dir: Path):
+def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str, nnunet_landmark_input_dir: Path):
     # load segmentation probability map patches and stitch them
     seg_prob_map_patches, _ = load_probability_pred_patches(
         seg_pred_dir, img_stem)
@@ -105,44 +108,44 @@ def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str,
     assert seg_prob_map_np.shape == (
         NNUNET_SEG_STITCHED_SIZE, NNUNET_SEG_STITCHED_SIZE), f"sample {img_stem}: expected squeezed probability map shape ({NNUNET_SEG_STITCHED_SIZE}, {NNUNET_SEG_STITCHED_SIZE}), got {seg_prob_map_np.shape}"
 
-    # resize to nnLandmark input size (1024x1024)
-    # use same resizing as in create_nnlandmark_heatmap_dataset.py
+    # resize to the heatmap-regression model's input size (1024x1024)
+    # use same resizing as in create_nnunet_heatmap_dataset.py
     seg_prob_map_np = _resize_array(seg_prob_map_np, target_size=(
-        NNLM_INPUT_SIZE, NNLM_INPUT_SIZE), out_dtype=np.float32)
+        NNUNET_LANDMARK_INPUT_SIZE, NNUNET_LANDMARK_INPUT_SIZE), out_dtype=np.float32)
 
-    # save as TIF with sanitized name (no underscores because of nnLandmark channel suffix)
+    # save as TIF with sanitized name (no underscores, since "_" separates the nnU-Net channel suffix)
     img_stem_sanitized = _sanitize_case_id(img_stem)
     tifffile.imwrite(
-        nnLM_input_dir / f"{img_stem_sanitized}_{SEGPROB_CHANNEL_ID}{TIF_FILE_ENDING}", seg_prob_map_np)
+        nnunet_landmark_input_dir / f"{img_stem_sanitized}_{SEGPROB_CHANNEL_ID}{TIF_FILE_ENDING}", seg_prob_map_np)
 
 
-def _resize_copy_raw_tif(tif_path: Path, nnLM_input_dir: Path):
+def _resize_copy_raw_tif(tif_path: Path, nnunet_landmark_input_dir: Path):
     tif_img_np = tifffile.imread(tif_path)
 
     assert tif_img_np.shape == (
         NNUNET_SEG_STITCHED_SIZE, NNUNET_SEG_STITCHED_SIZE), f"sample {tif_path.stem}: expected raw TIF shape ({NNUNET_SEG_STITCHED_SIZE}, {NNUNET_SEG_STITCHED_SIZE}), got {tif_img_np.shape}"
 
-    # resize to nnLandmark input size (1024x1024)
-    # use same resizing as in create_nnlandmark_heatmap_dataset.py
+    # resize to the heatmap-regression model's input size (1024x1024)
+    # use same resizing as in create_nnunet_heatmap_dataset.py
     tif_img_np = _resize_array(tif_img_np, target_size=(
-        NNLM_INPUT_SIZE, NNLM_INPUT_SIZE), out_dtype=tif_img_np.dtype)
+        NNUNET_LANDMARK_INPUT_SIZE, NNUNET_LANDMARK_INPUT_SIZE), out_dtype=tif_img_np.dtype)
 
-    # save TIF with sanitized name (no underscores because of nnLandmark channel suffix)
+    # save TIF with sanitized name (no underscores, since "_" separates the nnU-Net channel suffix)
     img_stem_sanitized = _sanitize_case_id(tif_path.stem)
     tifffile.imwrite(
-        nnLM_input_dir / f"{img_stem_sanitized}_{RAW_CHANNEL_ID}{TIF_FILE_ENDING}", tif_img_np)
+        nnunet_landmark_input_dir / f"{img_stem_sanitized}_{RAW_CHANNEL_ID}{TIF_FILE_ENDING}", tif_img_np)
 
 
-def _preprocess_input(test_tifs_paths: list[Path], seg_pred_dir: Path, nnLM_input_dir: Path, is_test_run: bool):
+def _preprocess_input(test_tifs_paths: list[Path], seg_pred_dir: Path, nnunet_landmark_input_dir: Path, is_test_run: bool):
     num_samples = len(test_tifs_paths) if not is_test_run else 1
     for idx, tif_path in enumerate(test_tifs_paths, start=1):
         # load segmentation prediction PROBABILITY MAP patches, stitch them and
         # resize to heatmap regression model input size (1024x1024)
         _stitch_resize_copy_segmentation_prob_map(
-            seg_pred_dir, tif_path.stem, nnLM_input_dir)
+            seg_pred_dir, tif_path.stem, nnunet_landmark_input_dir)
 
         # resize and copy raw TIF images
-        _resize_copy_raw_tif(tif_path, nnLM_input_dir)
+        _resize_copy_raw_tif(tif_path, nnunet_landmark_input_dir)
 
         print(f"preprocessed {idx} / {num_samples} samples")
         if is_test_run:
@@ -161,21 +164,15 @@ def main():
                         help="whether this is just a test run that only preprocesses (and thus predicts) one sample")
     args = parser.parse_args()
 
-    os.environ.setdefault(
-        "nnLM_raw", "/home/jhehli/data/datasets/nnLandmark/nnLM_raw")
-    os.environ.setdefault(
-        "nnLM_preprocessed", "/home/jhehli/data/datasets/nnLandmark/nnLM_preprocessed")
-    os.environ.setdefault(
-        "nnLM_results", "/home/jhehli/data/datasets/nnLandmark/nnLM_results")
-
     env_utils.load_forksight_env()
     JUNCTION_MATCHING_THRESHOLD = env_utils.load_as(
         "JUNCTION_MATCHING_THRESHOLD", float, 75.0)
 
-    nnLM_model_dir = Path(NNLM_MODEL_DIR)
-    nnLM_in_dir = Path(NNLM_MODEL_INPUT_DIR)
-    nnLM_out_dir = Path(NNLM_MODEL_OUTPUT_DIR)
-    assert nnLM_model_dir.is_dir() and nnLM_in_dir.is_dir() and nnLM_out_dir.is_dir()
+    nnunet_landmark_model_dir = Path(NNUNET_LANDMARK_MODEL_DIR)
+    nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
+    nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR)
+    assert nnunet_landmark_model_dir.is_dir(
+    ) and nnunet_landmark_in_dir.is_dir() and nnunet_landmark_out_dir.is_dir()
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
@@ -187,13 +184,14 @@ def main():
     # resize and copy raw TIF images for model input
     if args.preprocess:
         _preprocess_input(test_tifs_paths, seg_pred_dir,
-                          nnLM_in_dir, args.test_run)
+                          nnunet_landmark_in_dir, args.test_run)
 
-    # compute heatmap regression predictions with trained nnLandmark model
-    nnLM_predictor = initialize_nnlandmark_predictor(
-        nnLM_model_dir, device=torch.device("cuda"))
-    nnlandmark_predict_from_files(
-        nnLM_predictor, input_dir=nnLM_in_dir, output_dir=nnLM_out_dir, save_probabilities=True)
+    # compute heatmap regression predictions with the trained nnUNetTrainerHeatmapMSE model
+    nnunet_landmark_predictor = initialize_nnunet_landmark_predictor(
+        nnunet_landmark_model_dir, device=torch.device("cuda"))
+    nnunet_landmark_predict_from_files(
+        nnunet_landmark_predictor, input_dir=nnunet_landmark_in_dir, output_dir=nnunet_landmark_out_dir,
+        save_probabilities=True)
 
 
 if __name__ == "__main__":
