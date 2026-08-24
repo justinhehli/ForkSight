@@ -279,13 +279,12 @@ def main():
     nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
         "<TRAINER>", args.nnunet_trainer)) / timestamp
 
-    assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir(
-    ) and nnunet_landmark_out_dir.parent.is_dir()
+    assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir()
     nnunet_landmark_out_dir.mkdir(parents=True)
+    print(f"Model input dir: {nnunet_landmark_in_dir}")
+    print(f"Model output dir: {nnunet_landmark_out_dir}")
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
-
-    gt_by_image = _load_gt_annotations(test_labels_csv)
 
     # stitch, resize and copy segmentation probability maps,
     # resize and copy raw TIF images for model input
@@ -300,6 +299,7 @@ def main():
         nnunet_landmark_predictor, input_dir=nnunet_landmark_in_dir, output_dir=nnunet_landmark_out_dir,
         save_probabilities=True, verbose=True)
 
+    gt_by_image = _load_gt_annotations(test_labels_csv)
     _evaluate_predictions(
         test_tifs_paths, gt_by_image, nnunet_landmark_out_dir,
         JUNCTION_MATCHING_THRESHOLD, eval_out_dir,
