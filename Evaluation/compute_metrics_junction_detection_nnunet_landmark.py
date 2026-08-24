@@ -88,7 +88,7 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str):
     # eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
     # eval_out_plt_dir.mkdir()
 
-    return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir
+    return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, timestamp
 
 
 def _resize_array(arr: np.ndarray, target_size: tuple[int, int], out_dtype: np.dtype) -> np.ndarray:
@@ -270,20 +270,21 @@ def main():
     assert args.nnunet_trainer in ["nnUNetTrainerHeatmapMSE", "nnUNetTrainerHeatmapAdaptiveWing"], \
         "nnU-Net trainer must be one of nnUNetTrainerHeatmapMSE, nnUNetTrainerHeatmapAdaptiveWing"
 
+    test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, timestamp = _check_init_paths(
+        args.seg_model, args.nnunet_trainer)
+
     nnunet_landmark_model_dir = Path(NNUNET_LANDMARK_MODEL_DIR.replace(
         "<TRAINER>", args.nnunet_trainer))
     nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
     nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
-        "<TRAINER>", args.nnunet_trainer))
+        "<TRAINER>", args.nnunet_trainer)) / timestamp
 
     assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir(
     ) and nnunet_landmark_out_dir.parent.is_dir()
-    nnunet_landmark_out_dir.mkdir(exist_ok=True)
+    nnunet_landmark_out_dir.mkdir(parents=True)
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
-    test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir = _check_init_paths(
-        args.seg_model, args.nnunet_trainer)
     gt_by_image = _load_gt_annotations(test_labels_csv)
 
     # stitch, resize and copy segmentation probability maps,
