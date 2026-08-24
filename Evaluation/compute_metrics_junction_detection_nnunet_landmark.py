@@ -171,6 +171,7 @@ def _evaluate_predictions(
     nnunet_landmark_out_dir: Path,
     matching_threshold: float,
     eval_out_dir: Path,
+    verbose: bool = True
 ) -> dict:
     """Match nnU-Net landmark point predictions against GT and compute aggregate metrics.
 
@@ -191,7 +192,7 @@ def _evaluate_predictions(
     all_fn_annotations: list[dict] = []
     pred_csv_rows: list[dict] = []
 
-    for case_id, stem in case_id_to_stem.items():
+    for idx, (case_id, stem) in enumerate(case_id_to_stem.items(), start=1):
         gt_annotations = gt_by_image.get(stem)
         if gt_annotations is None:
             raise ValueError(
@@ -214,6 +215,9 @@ def _evaluate_predictions(
         all_fn_annotations.extend(fn_annotations)
         for r in pred_rows:
             pred_csv_rows.append({"image": stem, **r})
+
+        if verbose:
+            print(f"evaluated {idx} / {len(case_id_to_stem)} samples")
 
     pred_df = pd.DataFrame(pred_csv_rows)
     pred_path = eval_out_dir / "predictions_nnunet_landmark.csv"
@@ -293,7 +297,7 @@ def main():
         nnunet_landmark_model_dir, device=torch.device("cuda"))
     nnunet_landmark_predict_from_files(
         nnunet_landmark_predictor, input_dir=nnunet_landmark_in_dir, output_dir=nnunet_landmark_out_dir,
-        save_probabilities=True)
+        save_probabilities=True, verbose=True)
 
     _evaluate_predictions(
         test_tifs_paths, gt_by_image, nnunet_landmark_out_dir,

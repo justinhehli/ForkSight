@@ -51,6 +51,7 @@ def nnunet_landmark_predict_from_files(
     num_processes_preprocessing: int = 2,
     threshold: float = NNUNET_LANDMARK_DEFAULT_THRESHOLD,
     min_distance: int = NNUNET_LANDMARK_DEFAULT_MIN_DISTANCE,
+    verbose: bool = False
 ) -> None:
     """
     Runs heatmap-regression inference on every case in input_dir (named `<case>_0000.tif`,
@@ -89,7 +90,7 @@ def nnunet_landmark_predict_from_files(
         num_processes_preprocessing, predictor.device.type == "cuda", predictor.verbose_preprocessing,
     )
 
-    for preprocessed in iterator:
+    for idx, preprocessed in enumerate(iterator, start=1):
         data = preprocessed["data"]
         if isinstance(data, str):
             delfile = data
@@ -108,6 +109,9 @@ def nnunet_landmark_predict_from_files(
             predictor.dataset_json, ofile, save_probabilities=save_probabilities,
             threshold=threshold, min_distance=min_distance,
         )
+
+        if verbose:
+            print(f"predicted {idx} / {len(case_ids)} samples")
 
 
 def get_rescaled_point_predictions_from_model_output(
