@@ -10,8 +10,10 @@
 
 # Single nnU-Net junction-landmark (heatmap regression) fold training job.
 # Expected env vars (passed via --export):
-#   FOLD     — the fold number (0-4)
-#   TRAINER  — nnUNet trainer class (default: nnUNetTrainerHeatmapMSE)
+#   FOLD                   — the fold number (0-4)
+#   TRAINER                — nnUNet trainer class (default: nnUNetTrainerHeatmapMSE)
+#   NNUNET_HEATMAP_SIGMA   — optional, heatmap gaussian sigma in pixels; overrides whatever
+#                            Environment/.env sets, see below
 
 set -euo pipefail
 
@@ -39,10 +41,20 @@ echo "TRAINER: ${TRAINER}"
 echo "DATASET_ID: ${NNUNET_LANDMARK_DATASET_ID}"
 echo "Job ${SLURM_JOB_ID} on $(hostname)"
 
+# Preserve a NNUNET_HEATMAP_SIGMA passed in via sbatch --export (from the submit script's
+# NNUNET_HEATMAP_SIGMA=... argument) across sourcing .env below - Environment/.env may itself
+# unconditionally set NNUNET_HEATMAP_SIGMA, which would otherwise silently clobber this override.
+SIGMA_OVERRIDE="${NNUNET_HEATMAP_SIGMA:-}"
+
 # load environment variables (e.g. NNUNET_HEATMAP_SIGMA/THRESHOLD/MIN_DISTANCE, paths, etc.)
 set -a
 source "${REPO_ROOT}/Environment/.env"
 set +a
+
+if [[ -n "${SIGMA_OVERRIDE}" ]]; then
+    export NNUNET_HEATMAP_SIGMA="${SIGMA_OVERRIDE}"
+fi
+echo "NNUNET_HEATMAP_SIGMA: ${NNUNET_HEATMAP_SIGMA:-<unset, using trainer default>}"
 
 # activate nnUNet virtual environment
 source ~/.nnUNet_env/bin/activate
