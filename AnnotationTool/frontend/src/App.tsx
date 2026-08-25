@@ -1003,7 +1003,7 @@ const App = () => {
           </Box>
         </Box>
       </Box>
-      <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={overviewOpen} onClose={() => setOverviewOpen(false)} maxWidth="md">
         <DialogTitle>{selectedProject}</DialogTitle>
         <DialogContent>
           <Box
@@ -1032,31 +1032,42 @@ const App = () => {
 
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
+            <Typography variant="body1" color="text.secondary">
+              <Box sx={{ fontWeight: "bold" }}>Forks statistics (processed images only)</Box>
+            </Typography>
+
             <Typography variant="body2" color="text.secondary">
-              Total annotated forks (unweighted, processed only)
+              Total annotated forks (unweighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.totalAnnotatedForks.toFixed(1)}
             </Typography>
 
             <Typography variant="body2" color="text.secondary">
-              Replication forks (weighted, processed only)
+              Replication forks (weighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.replicationForks.toFixed(1)}
             </Typography>
 
             <Typography variant="body2" color="text.secondary">
-              Reversed forks (weighted, processed only)
+              Reversed forks (weighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.reversedForks.toFixed(1)}
             </Typography>
 
+            <Typography variant="body2" color="text.secondary">
+              Weighted forks sum
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {(stats.replicationForks + stats.reversedForks).toFixed(1)}
+            </Typography>
+
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
-              Reversed fork ratio (weighted, processed only)
+              Reversed fork ratio (weighted)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
               {stats.reversedForkRatio}
