@@ -1065,8 +1065,6 @@ const App = () => {
               {(stats.replicationForks + stats.reversedForks).toFixed(1)}
             </Typography>
 
-            <Divider sx={{ gridColumn: "1 / -1" }} />
-
             <Typography variant="body2" color="text.secondary">
               Reversed fork ratio (weighted)
             </Typography>
