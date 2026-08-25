@@ -59,6 +59,7 @@ const ImageAnnotatorComponent = ({
   const [natSize, setNatSize] = useState({ w: 1, h: 1 });
   const [showMask, setShowMask] = useState(true);
   const [maskAvailable, setMaskAvailable] = useState(true);
+  const [hidePoints, setHidePoints] = useState(false);
 
   useEffect(() => {
     setMaskAvailable(true);
@@ -89,6 +90,26 @@ const ImageAnnotatorComponent = ({
   useEffect(() => {
     onSelectRef.current = onSelectPoint;
   }, [onSelectPoint]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "h" || e.key === "H") && !e.ctrlKey) setHidePoints(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "h" || e.key === "H") setHidePoints(false);
+    };
+    const handleBlur = () => setHidePoints(false);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   // zoom via wheel (non-passive)
   // ====================
@@ -347,61 +368,62 @@ const ImageAnnotatorComponent = ({
           pointerEvents: "none",
         }}
       >
-        {annotations.points.map((p) => {
-          const usePreview = dragPreview !== null && dragPreview.id === p.id;
-          const px = usePreview ? dragPreview.x : p.x;
-          const py = usePreview ? dragPreview.y : p.y;
-          const cx = px * zoom + panX;
-          const cy = py * zoom + panY;
-          const selected = p.id === selectedPointId && p.id !== draggingPointId;
-          // multiple labels are drawn as a small cluster of dots around the point
-          const labels = p.labels.length > 0 ? sortLabelsForDisplay(p.labels) : [""];
-          const n = labels.length;
-          return (
-            <g key={p.id}>
-              {labels.map((l, i) => {
-                const angle = n > 1 ? (2 * Math.PI * i) / n - Math.PI / 2 : 0;
-                const offset = n > 1 ? 5 : 0;
-                const dx = cx + Math.cos(angle) * offset;
-                const dy = cy + Math.sin(angle) * offset;
-                const color = l ? labelColor(l) : "#9e9e9e";
-                return (
-                  <circle
-                    key={i}
-                    cx={dx}
-                    cy={dy}
-                    r={n > 1 ? 5 : 7}
-                    fill={color}
-                    fillOpacity={0.85}
-                    stroke="#fff"
-                    strokeWidth={1.5}
-                  />
-                );
-              })}
-              {/* outer ring when selected */}
-              {selected && (
-                <React.Fragment>
-                  <circle cx={cx} cy={cy} r={13} fill="none" stroke="#fff" strokeWidth={2} />
-                  <text
-                    x={cx}
-                    y={cy - 11}
-                    fontSize={11}
-                    fontFamily="sans-serif"
-                    fontWeight={600}
-                    fill="#fff"
-                    stroke="#000"
-                    strokeWidth={2.5}
-                    paintOrder="stroke"
-                    textAnchor="middle"
-                    style={{ pointerEvents: "none", userSelect: "none" }}
-                  >
-                    {p.labels.length > 0 ? sortLabelsForDisplay(p.labels).join(", ") : "unlabeled"}
-                  </text>
-                </React.Fragment>
-              )}
-            </g>
-          );
-        })}
+        {!hidePoints &&
+          annotations.points.map((p) => {
+            const usePreview = dragPreview !== null && dragPreview.id === p.id;
+            const px = usePreview ? dragPreview.x : p.x;
+            const py = usePreview ? dragPreview.y : p.y;
+            const cx = px * zoom + panX;
+            const cy = py * zoom + panY;
+            const selected = p.id === selectedPointId && p.id !== draggingPointId;
+            // multiple labels are drawn as a small cluster of dots around the point
+            const labels = p.labels.length > 0 ? sortLabelsForDisplay(p.labels) : [""];
+            const n = labels.length;
+            return (
+              <g key={p.id}>
+                {labels.map((l, i) => {
+                  const angle = n > 1 ? (2 * Math.PI * i) / n - Math.PI / 2 : 0;
+                  const offset = n > 1 ? 5 : 0;
+                  const dx = cx + Math.cos(angle) * offset;
+                  const dy = cy + Math.sin(angle) * offset;
+                  const color = l ? labelColor(l) : "#9e9e9e";
+                  return (
+                    <circle
+                      key={i}
+                      cx={dx}
+                      cy={dy}
+                      r={n > 1 ? 5 : 7}
+                      fill={color}
+                      fillOpacity={0.85}
+                      stroke="#fff"
+                      strokeWidth={1.5}
+                    />
+                  );
+                })}
+                {/* outer ring when selected */}
+                {selected && (
+                  <React.Fragment>
+                    <circle cx={cx} cy={cy} r={13} fill="none" stroke="#fff" strokeWidth={2} />
+                    <text
+                      x={cx}
+                      y={cy - 11}
+                      fontSize={11}
+                      fontFamily="sans-serif"
+                      fontWeight={600}
+                      fill="#fff"
+                      stroke="#000"
+                      strokeWidth={2.5}
+                      paintOrder="stroke"
+                      textAnchor="middle"
+                      style={{ pointerEvents: "none", userSelect: "none" }}
+                    >
+                      {p.labels.length > 0 ? sortLabelsForDisplay(p.labels).join(", ") : "unlabeled"}
+                    </text>
+                  </React.Fragment>
+                )}
+              </g>
+            );
+          })}
       </svg>
 
       {/* Zoom controls */}

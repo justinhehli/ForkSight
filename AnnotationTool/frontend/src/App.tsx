@@ -145,7 +145,7 @@ const App = () => {
   // Only recomputed while the overview dialog is actually open
   const stats = useMemo(() => {
     if (!overviewOpen) {
-      return { replicationForks: 0, reversedForks: 0, ratio: "—" };
+      return { replicationForks: 0, reversedForks: 0, reversedForkRatio: "—", totalAnnotatedForks: 0 };
     }
 
     // Fork counts only consider processed images - unprocessed images may still
@@ -157,19 +157,23 @@ const App = () => {
     const reversedGroup = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
     let replicationForks = 0;
     let reversedForks = 0;
+    let totalAnnotatedForks = 0;
 
     for (const p of allPoints) {
       for (const l of p.labels) {
         if (l === replicationGroup.fifty || l === replicationGroup.hundred) {
           replicationForks += FORK_WEIGHTS[l];
+          totalAnnotatedForks += 1;
         } else if (l === reversedGroup.fifty || l === reversedGroup.hundred) {
           reversedForks += FORK_WEIGHTS[l];
+          totalAnnotatedForks += 1;
         }
       }
     }
 
-    const ratio = reversedForks > 0 ? (replicationForks / reversedForks).toFixed(2) : "—";
-    return { replicationForks, reversedForks, ratio };
+    const reversedForkRatio =
+      replicationForks + reversedForks > 0 ? (reversedForks / (replicationForks + reversedForks)).toFixed(2) : "—";
+    return { replicationForks, reversedForks, reversedForkRatio, totalAnnotatedForks };
   }, [annotations.images, overviewOpen]);
 
   // bootstrap - load environment + projects
@@ -1029,6 +1033,13 @@ const App = () => {
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
+              Total annotated forks (unweighted, processed only)
+            </Typography>
+            <Typography variant="body2" fontWeight={600} textAlign="right">
+              {stats.totalAnnotatedForks.toFixed(1)}
+            </Typography>
+
+            <Typography variant="body2" color="text.secondary">
               Replication forks (weighted, processed only)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
@@ -1045,10 +1056,10 @@ const App = () => {
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
             <Typography variant="body2" color="text.secondary">
-              Replication / reversed ratio (processed only)
+              Reversed fork ratio (weighted, processed only)
             </Typography>
             <Typography variant="body2" fontWeight={600} textAlign="right">
-              {stats.ratio}
+              {stats.reversedForkRatio}
             </Typography>
           </Box>
         </DialogContent>
