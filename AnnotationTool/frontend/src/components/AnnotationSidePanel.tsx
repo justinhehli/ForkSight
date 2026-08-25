@@ -293,6 +293,7 @@ const AnnotationSidePanel = memo(function AnnotationSidePanel({
             <b>D / Delete</b>: delete selected point
             <br />
             <b>M</b>: toggle segmentation mask
+            <br />
             <b>Hold H</b>: Hide points
           </Typography>
         </Box>
