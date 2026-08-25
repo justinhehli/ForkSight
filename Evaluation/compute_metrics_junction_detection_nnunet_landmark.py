@@ -267,8 +267,12 @@ def main():
     JUNCTION_MATCHING_THRESHOLD = env_utils.load_as(
         "JUNCTION_MATCHING_THRESHOLD", float, 75.0)
 
-    assert args.nnunet_trainer in ["nnUNetTrainerHeatmapMSE", "nnUNetTrainerHeatmapAdaptiveWing"], \
-        "nnU-Net trainer must be one of nnUNetTrainerHeatmapMSE, nnUNetTrainerHeatmapAdaptiveWing"
+    nnunet_trainers = ["nnUNetTrainerHeatmapMSE",
+                       "nnUNetTrainerHeatmapAdaptiveWing",
+                       "nnUNetTrainerHeatmapAdaptiveWingFocal",
+                       "nnUNetTrainerHeatmapAdaptiveWingSoftSampling"
+                       "nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling"]
+    assert args.nnunet_trainer in nnunet_trainers, f"nnU-Net trainer must be in {nnunet_trainers}"
 
     test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, timestamp = _check_init_paths(
         args.seg_model, args.nnunet_trainer)
