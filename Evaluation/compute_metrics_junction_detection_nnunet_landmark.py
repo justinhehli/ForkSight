@@ -270,7 +270,7 @@ def main():
     nnunet_trainers = ["nnUNetTrainerHeatmapMSE",
                        "nnUNetTrainerHeatmapAdaptiveWing",
                        "nnUNetTrainerHeatmapAdaptiveWingFocal",
-                       "nnUNetTrainerHeatmapAdaptiveWingSoftSampling"
+                       "nnUNetTrainerHeatmapAdaptiveWingSoftSampling",
                        "nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling"]
     assert args.nnunet_trainer in nnunet_trainers, f"nnU-Net trainer must be in {nnunet_trainers}"
 
