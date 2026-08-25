@@ -1032,9 +1032,10 @@ const App = () => {
 
             <Divider sx={{ gridColumn: "1 / -1" }} />
 
-            <Typography variant="body1" color="text.secondary">
-              <Box sx={{ fontWeight: "bold" }}>Forks statistics (processed images only)</Box>
+            <Typography variant="body2" color="text.secondary">
+              <Box sx={{ fontWeight: "bold" }}>Fork statistics (processed images only)</Box>
             </Typography>
+            <br />
 
             <Typography variant="body2" color="text.secondary">
               Total annotated forks (unweighted)
