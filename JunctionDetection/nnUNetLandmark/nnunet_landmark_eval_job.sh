@@ -43,16 +43,16 @@ while [[ $# -gt 0 ]]; do
             TRAINER="$2"
             shift 2
             ;;
+        --dataset)
+            DATASET_ID="$2"
+            shift 2
+            ;;
         --preprocess)
             PREPROCESS=1
             shift
             ;;
         --test-run)
             TEST_RUN=1
-            shift
-            ;;
-        --dataset)
-            DATASET_ID=1
             shift
             ;;
         *)
