@@ -9,9 +9,14 @@
 #SBATCH --error=/scratch/jhehli/logs/%x-%j.err
 
 # Single nnU-Net junction-landmark (heatmap regression) fold training job.
+# If TRAINER is nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel (the single-combined-label
+# trainer - see its docstring), this also runs patch_single_label_plans.py (idempotent) before
+# nnUNetv2_train, which that trainer requires.
+#
 # Expected env vars (passed via --export):
 #   FOLD                   — the fold number (0-4)
 #   TRAINER                — nnUNet trainer class (default: nnUNetTrainerHeatmapMSE)
+#   DATASET                — nnU-Net dataset ID (default: 11)
 #   NNUNET_HEATMAP_SIGMA   — optional, heatmap gaussian sigma in pixels; overrides whatever
 #                            Environment/.env sets, see below
 
@@ -56,5 +61,13 @@ echo "NNUNET_HEATMAP_SIGMA: ${NNUNET_HEATMAP_SIGMA:-<unset, using trainer defaul
 source ~/.nnUNet_env/bin/activate
 
 mkdir -p "/scratch/jhehli/logs"
+
+if [[ "$TRAINER" == "nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel" ]]; then
+    # register SingleHeadLabelManager on this dataset's plans, so the
+    # network is sized with 1 output channel instead of the default 2 - 
+    # see JunctionDetection/PreProcessing/patch_single_label_plans.py and
+    # nnUNet/nnunetv2/utilities/label_handling/single_label_manager.py
+    python -m JunctionDetection.PreProcessing.patch_single_label_plans --dataset-id "$NNUNET_LANDMARK_DATASET_ID"
+fi
 
 nnUNetv2_train "$NNUNET_LANDMARK_DATASET_ID" 2d "$FOLD" -tr "$TRAINER" --npz

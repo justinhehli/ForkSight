@@ -12,15 +12,27 @@
 #   nnUNetTrainerHeatmapAdaptiveWingFocal                - AWL + focal hard-positive upweighting
 #   nnUNetTrainerHeatmapAdaptiveWingSoftSampling          - AWL + snapshot-based background down-weighting
 #   nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling     - AWL + both of the above
+#   nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel - single-combined-label counterpart of
+#                                                          the above (see its docstring); requires the
+#                                                          "combined-label" dataset copy (DATASET=13,
+#                                                          see JunctionDetection/PreProcessing/create_nnunet_dataset_variants.py).
+#                                                          The fold job runs patch_single_label_plans.py
+#                                                          automatically for this trainer.
 #   (see nnUNet/nnunetv2/training/loss/adaptive_wing.py and
 #    nnUNet/nnunetv2/training/nnUNetTrainer/variants/heatmap/nnUNetTrainerHeatmapAdaptiveWing*.py)
 #
 # To override the number of folds (default 5):
 #   NUM_FOLDS=3 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
 #
+# To override the nnU-Net dataset ID (default 11):
+#   DATASET=13 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
+#
 # To override the heatmap gaussian sigma (in pixels) without touching Environment/.env:
 #   NNUNET_HEATMAP_SIGMA=4.0 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
 # This takes precedence over any NNUNET_HEATMAP_SIGMA set in Environment/.env (see fold job script).
+#
+# Example: single-combined-label training —
+#   DATASET=13 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel
 
 set -euo pipefail
 
@@ -46,7 +58,7 @@ TRAINER="${1:-nnUNetTrainerHeatmapMSE}"
 
 # Only forwarded to the job (and from there into NNUNET_HEATMAP_SIGMA) if explicitly set here -
 # otherwise the job script falls back to whatever Environment/.env provides.
-EXPORT_VARS="FOLD,TRAINER"
+EXPORT_VARS="FOLD,TRAINER,DATASET"
 if [[ -n "${NNUNET_HEATMAP_SIGMA:-}" ]]; then
     EXPORT_VARS="${EXPORT_VARS},NNUNET_HEATMAP_SIGMA"
 fi
