@@ -24,13 +24,9 @@ export nnUNet_results="/home/jhehli/data/datasets/nnUNet/nnUNet_results"
 
 export PYTHONUNBUFFERED=1
 
-# Hardcoded, not read from Environment/.env - must match NNUNET_LANDMARK_DATASET_ID in
-# JunctionDetection/PreProcessing/create_nnunet_heatmap_dataset.py and NNUNET_LANDMARK_MODEL_DIR in
-# Evaluation/compute_metrics_junction_detection_nnunet_landmark.py
-NNUNET_LANDMARK_DATASET_ID="011"
-
 : "${FOLD:?FOLD env var is required (0-4)}"
 TRAINER="${TRAINER:-nnUNetTrainerHeatmapMSE}"
+NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "${DATASET:-11}")
 
 REPO_ROOT="/home/jhehli/data/ForkSight"
 cd "$REPO_ROOT"

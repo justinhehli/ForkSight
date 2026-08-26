@@ -31,6 +31,7 @@ SEG_MODEL=""
 TRAINER="nnUNetTrainerHeatmapMSE"
 PREPROCESS=0
 TEST_RUN=0
+DATASET_ID=011
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --test-run)
             TEST_RUN=1
+            shift
+            ;;
+        --dataset)
+            DATASET_ID=1
             shift
             ;;
         *)
@@ -74,6 +79,7 @@ cd "$REPO_ROOT"
 
 echo "CWD: $(pwd)"
 echo "SEG_MODEL: ${SEG_MODEL}"
+echo "DATASET_ID: ${DATASET_ID}"
 echo "TRAINER: ${TRAINER}"
 echo "PREPROCESS: ${PREPROCESS}"
 echo "TEST_RUN: ${TEST_RUN}"
@@ -90,7 +96,7 @@ source ~/.nnUNet_env/bin/activate
 
 mkdir -p "/scratch/jhehli/logs"
 
-PY_ARGS=(--seg-model "$SEG_MODEL" --nnunet-trainer "$TRAINER")
+PY_ARGS=(--seg-model "$SEG_MODEL" --nnunet-trainer "$TRAINER" --dataset "$DATASET_ID")
 [[ "$PREPROCESS" == "1" ]] && PY_ARGS+=(--preprocess)
 [[ "$TEST_RUN" == "1" ]] && PY_ARGS+=(--test-run)
 

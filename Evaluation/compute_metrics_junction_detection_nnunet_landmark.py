@@ -41,12 +41,12 @@ TIF_FILE_ENDING = ".tif"
 # hardcoded dataset ID must match NNUNET_LANDMARK_DATASET_ID in
 # JunctionDetection/PreProcessing/create_nnunet_heatmap_dataset.py and
 # JunctionDetection/nnUNetLandmark/nnunet_landmark_fold_job.sh
-NNUNET_LANDMARK_MODEL_DIR = "/home/jhehli/data/datasets/nnUNet/nnUNet_results/Dataset011_JunctionDetection_v1/<TRAINER>__nnUNetPlans__2d"
+NNUNET_LANDMARK_MODEL_BASE_DIR = "/home/jhehli/data/datasets/nnUNet/nnUNet_results"
 NNUNET_LANDMARK_MODEL_INPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_input"
 NNUNET_LANDMARK_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_output/<TRAINER>"
 
 
-def _check_init_paths(seg_model: str, nnunet_trainer: str):
+def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
     EVALUATION_OUTPUT_DIR = os.getenv("EVALUATION_OUTPUT_DIR")
     JUNCTION_DETECTION_DATASET_DIR = os.getenv(
         "JUNCTION_DETECTION_DATASET_DIR")
@@ -64,7 +64,6 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str):
     test_dir = Path(JUNCTION_DETECTION_DATASET_DIR)
     test_tifs_dir = test_dir / "images_tif"
     test_labels_csv = test_dir / "relabeling_data.csv"
-
     if not test_tifs_dir.is_dir():
         raise FileNotFoundError(
             f"Images directory not found: {test_tifs_dir}")
@@ -82,13 +81,33 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str):
             f"{seg_pred_dir}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     eval_out_dir = Path(EVALUATION_OUTPUT_DIR) / \
         "junction_detection_nnUNetLandmark" / nnunet_trainer / timestamp
     eval_out_dir.mkdir(parents=True)
-    # eval_out_plt_dir = eval_out_dir / "plots" if do_plot else None
-    # eval_out_plt_dir.mkdir()
 
-    return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, timestamp
+    nnunet_landmark_results_dir = Path(NNUNET_LANDMARK_MODEL_BASE_DIR)
+    assert nnunet_landmark_results_dir.is_dir(
+    ), f"nnU-Net results directory does not exist ({nnunet_landmark_results_dir})"
+
+    dataset_dir = next((p for p in nnunet_landmark_results_dir.iterdir(
+    ) if p.is_dir() and p.name.startswith(f"Dataset{dataset_id.zfill(3)}_")), None)
+    assert dataset_dir is not None and dataset_dir.is_dir(
+    ), f"nnU-Net dataset directory for dataset ID {dataset_id} does not exist in ({nnunet_landmark_results_dir})"
+
+    nnunet_landmark_model_dir = dataset_dir / \
+        f"{nnunet_trainer}__nnUNetPlans__2d"
+    nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
+    nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
+        "<TRAINER>", nnunet_trainer)) / timestamp
+
+    assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir()
+    nnunet_landmark_out_dir.mkdir(parents=True)
+    print(f"Model input dir: {nnunet_landmark_in_dir}")
+    print(f"Model output dir: {nnunet_landmark_out_dir}")
+
+    return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, \
+        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir
 
 
 def _resize_array(arr: np.ndarray, target_size: tuple[int, int], out_dtype: np.dtype) -> np.ndarray:
@@ -257,6 +276,8 @@ def main():
                         "where segmentation predictions with this model were already made")
     parser.add_argument("--nnunet-trainer", type=str, required=True,
                         help="name of the nU-Net trainer to evaluate")
+    parser.add_argument("--dataset", type=str, required=True,
+                        help="nnunet dataset ID for the model")
     parser.add_argument("--preprocess", action="store_true",
                         help="enable input image preprocessing (if disabled, we assume these exist already)")
     parser.add_argument("--test-run", action="store_true",
@@ -267,26 +288,16 @@ def main():
     JUNCTION_MATCHING_THRESHOLD = env_utils.load_as(
         "JUNCTION_MATCHING_THRESHOLD", float, 75.0)
 
-    nnunet_trainers = ["nnUNetTrainerHeatmapMSE",
-                       "nnUNetTrainerHeatmapAdaptiveWing",
-                       "nnUNetTrainerHeatmapAdaptiveWingFocal",
-                       "nnUNetTrainerHeatmapAdaptiveWingSoftSampling",
-                       "nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling"]
-    assert args.nnunet_trainer in nnunet_trainers, f"nnU-Net trainer must be in {nnunet_trainers}"
+    # nnunet_trainers = ["nnUNetTrainerHeatmapMSE",
+    #                   "nnUNetTrainerHeatmapAdaptiveWing",
+    #                   "nnUNetTrainerHeatmapAdaptiveWingFocal",
+    #                   "nnUNetTrainerHeatmapAdaptiveWingSoftSampling",
+    #                   "nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling"]
+    # assert args.nnunet_trainer in nnunet_trainers, f"nnU-Net trainer must be in {nnunet_trainers}"
 
-    test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, timestamp = _check_init_paths(
-        args.seg_model, args.nnunet_trainer)
-
-    nnunet_landmark_model_dir = Path(NNUNET_LANDMARK_MODEL_DIR.replace(
-        "<TRAINER>", args.nnunet_trainer))
-    nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
-    nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
-        "<TRAINER>", args.nnunet_trainer)) / timestamp
-
-    assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir()
-    nnunet_landmark_out_dir.mkdir(parents=True)
-    print(f"Model input dir: {nnunet_landmark_in_dir}")
-    print(f"Model output dir: {nnunet_landmark_out_dir}")
+    test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir,  \
+        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir = \
+        _check_init_paths(args.seg_model, args.nnunet_trainer, args.dataset)
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
@@ -303,6 +314,7 @@ def main():
         nnunet_landmark_predictor, input_dir=nnunet_landmark_in_dir, output_dir=nnunet_landmark_out_dir,
         save_probabilities=True, verbose=True)
 
+    # evaluate predictions against ground truth
     gt_by_image = _load_gt_annotations(test_labels_csv)
     _evaluate_predictions(
         test_tifs_paths, gt_by_image, nnunet_landmark_out_dir,

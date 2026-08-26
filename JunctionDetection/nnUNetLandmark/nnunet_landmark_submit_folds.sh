@@ -28,20 +28,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOB_SCRIPT="${SCRIPT_DIR}/nnunet_landmark_fold_job.sh"
 
 NUM_FOLDS="${NUM_FOLDS:-5}"
+NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "${DATASET:-11}")
 TRAINER="${1:-nnUNetTrainerHeatmapMSE}"
 
-VALID_TRAINERS=(
-    nnUNetTrainerHeatmapMSE
-    nnUNetTrainerHeatmapAdaptiveWing
-    nnUNetTrainerHeatmapAdaptiveWingFocal
-    nnUNetTrainerHeatmapAdaptiveWingSoftSampling
-    nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling
-)
-if [[ ! " ${VALID_TRAINERS[*]} " =~ " ${TRAINER} " ]]; then
-    echo "Error: unknown trainer '${TRAINER}'"
-    echo "Valid options: ${VALID_TRAINERS[*]}"
-    exit 1
-fi
+# VALID_TRAINERS=(
+#     nnUNetTrainerHeatmapMSE
+#     nnUNetTrainerHeatmapAdaptiveWing
+#     nnUNetTrainerHeatmapAdaptiveWingFocal
+#     nnUNetTrainerHeatmapAdaptiveWingSoftSampling
+#     nnUNetTrainerHeatmapAdaptiveWingFocalSoftSampling
+# )
+# if [[ ! " ${VALID_TRAINERS[*]} " =~ " ${TRAINER} " ]]; then
+#     echo "Error: unknown trainer '${TRAINER}'"
+#     echo "Valid options: ${VALID_TRAINERS[*]}"
+#     exit 1
+# fi
 
 # Only forwarded to the job (and from there into NNUNET_HEATMAP_SIGMA) if explicitly set here -
 # otherwise the job script falls back to whatever Environment/.env provides.
@@ -58,7 +59,7 @@ fi
 echo ""
 
 # --- Fold 0 (must finish first) ---
-FOLD0_JOB=$(FOLD=0 TRAINER="${TRAINER}" sbatch --parsable \
+FOLD0_JOB=$(FOLD=0 TRAINER="${TRAINER}" DATASET="${NNUNET_LANDMARK_DATASET_ID}" sbatch --parsable \
     --job-name="nnunet-landmark-fold0" \
     --export="${EXPORT_VARS}" \
     "$JOB_SCRIPT")
@@ -67,7 +68,7 @@ echo "Fold 0: job ${FOLD0_JOB} (runs first)"
 
 # --- Folds 1..N-1 (parallel, depend on fold 0 succeeding) ---
 for fold in $(seq 1 $(( NUM_FOLDS - 1 ))); do
-    JOB_ID=$(FOLD="${fold}" TRAINER="${TRAINER}" sbatch --parsable \
+    JOB_ID=$(FOLD="${fold}" TRAINER="${TRAINER}" DATASET="${NNUNET_LANDMARK_DATASET_ID}" sbatch --parsable \
         --job-name="nnunet-landmark-fold${fold}" \
         --export="${EXPORT_VARS}" \
         --dependency=afterok:"${FOLD0_JOB}" \
