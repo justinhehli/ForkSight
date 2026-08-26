@@ -43,7 +43,19 @@ TIF_FILE_ENDING = ".tif"
 # JunctionDetection/nnUNetLandmark/nnunet_landmark_fold_job.sh
 NNUNET_LANDMARK_MODEL_BASE_DIR = "/home/jhehli/data/datasets/nnUNet/nnUNet_results"
 NNUNET_LANDMARK_MODEL_INPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_input"
+NNUNET_LANDMARK_MODEL_INPUT_DIR_SEGPROB_ONLY = "/home/jhehli/data/nnUNet_landmark_eval/model_input_segprob"
 NNUNET_LANDMARK_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_output/<DATASET><TRAINER>"
+
+
+def _get_num_input_channels(nnunet_landmark_model_dir: Path) -> int:
+    """Read the number of input channels the model was trained with from the dataset.json"""
+    dataset_json_path = nnunet_landmark_model_dir / "dataset.json"
+    if not dataset_json_path.is_file():
+        raise FileNotFoundError(
+            f"dataset.json not found next to model checkpoints: {dataset_json_path}")
+    with open(dataset_json_path) as f:
+        dataset_json = json.load(f)
+    return len(dataset_json["channel_names"])
 
 
 def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
@@ -99,17 +111,26 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
 
     nnunet_landmark_model_dir = dataset_dir / \
         f"{nnunet_trainer}__nnUNetPlans__2d"
-    nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
+    assert nnunet_landmark_model_dir.is_dir(
+    ), f"nnU-Net trainer directory does not exist ({nnunet_landmark_model_dir})"
+
+    num_input_channels = _get_num_input_channels(nnunet_landmark_model_dir)
+    assert num_input_channels in (1, 2), \
+        f"unexpected number of input channels in dataset.json: {num_input_channels}"
+    model_input_dir = (NNUNET_LANDMARK_MODEL_INPUT_DIR_SEGPROB_ONLY if num_input_channels == 1
+                       else NNUNET_LANDMARK_MODEL_INPUT_DIR)
+
+    nnunet_landmark_in_dir = Path(model_input_dir)
     nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
         "<DATASET>", dataset_prefix).replace("<TRAINER>", nnunet_trainer)) / timestamp
 
-    assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir()
+    assert nnunet_landmark_in_dir.is_dir()
     nnunet_landmark_out_dir.mkdir(parents=True)
     print(f"Model input dir: {nnunet_landmark_in_dir}")
     print(f"Model output dir: {nnunet_landmark_out_dir}")
 
     return test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir, \
-        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir
+        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir, num_input_channels
 
 
 def _resize_array(arr: np.ndarray, target_size: tuple[int, int], out_dtype: np.dtype) -> np.ndarray:
@@ -128,7 +149,7 @@ def _sanitize_case_id(img_name: str) -> str:
     return img_name.replace("_", "-").replace(" ", "-")
 
 
-def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str, nnunet_landmark_input_dir: Path):
+def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str, nnunet_landmark_input_dir: Path, channel_id: str = SEGPROB_CHANNEL_ID):
     # load segmentation probability map patches and stitch them
     seg_prob_map_patches, _ = load_probability_pred_patches(
         seg_pred_dir, img_stem)
@@ -150,7 +171,7 @@ def _stitch_resize_copy_segmentation_prob_map(seg_pred_dir: Path, img_stem: str,
     # save as TIF with sanitized name (no underscores, since "_" separates the nnU-Net channel suffix)
     img_stem_sanitized = _sanitize_case_id(img_stem)
     tifffile.imwrite(
-        nnunet_landmark_input_dir / f"{img_stem_sanitized}_{SEGPROB_CHANNEL_ID}{TIF_FILE_ENDING}", seg_prob_map_np)
+        nnunet_landmark_input_dir / f"{img_stem_sanitized}_{channel_id}{TIF_FILE_ENDING}", seg_prob_map_np)
 
 
 def _resize_copy_raw_tif(tif_path: Path, nnunet_landmark_input_dir: Path):
@@ -170,16 +191,20 @@ def _resize_copy_raw_tif(tif_path: Path, nnunet_landmark_input_dir: Path):
         nnunet_landmark_input_dir / f"{img_stem_sanitized}_{RAW_CHANNEL_ID}{TIF_FILE_ENDING}", tif_img_np)
 
 
-def _preprocess_input(test_tifs_paths: list[Path], seg_pred_dir: Path, nnunet_landmark_input_dir: Path, is_test_run: bool):
+def _preprocess_input(test_tifs_paths: list[Path], seg_pred_dir: Path, nnunet_landmark_input_dir: Path, is_test_run: bool, single_channel: bool = False):
     num_samples = len(test_tifs_paths) if not is_test_run else 1
     for idx, tif_path in enumerate(test_tifs_paths, start=1):
         # load segmentation prediction PROBABILITY MAP patches, stitch them and
-        # resize to heatmap regression model input size (1024x1024)
+        # resize to heatmap regression model input size (1024x1024).
+        # single-channel (segprob-only) models take it as the sole channel (_0000),
+        # two-channel models take it as the second channel (_0001) alongside the raw TIF
         _stitch_resize_copy_segmentation_prob_map(
-            seg_pred_dir, tif_path.stem, nnunet_landmark_input_dir)
+            seg_pred_dir, tif_path.stem, nnunet_landmark_input_dir,
+            channel_id=RAW_CHANNEL_ID if single_channel else SEGPROB_CHANNEL_ID)
 
-        # resize and copy raw TIF images
-        _resize_copy_raw_tif(tif_path, nnunet_landmark_input_dir)
+        if not single_channel:
+            # resize and copy raw TIF images
+            _resize_copy_raw_tif(tif_path, nnunet_landmark_input_dir)
 
         print(f"preprocessed {idx} / {num_samples} samples")
         if is_test_run:
@@ -298,16 +323,18 @@ def main():
     # assert args.nnunet_trainer in nnunet_trainers, f"nnU-Net trainer must be in {nnunet_trainers}"
 
     test_tifs_paths, test_labels_csv, seg_pred_dir, eval_out_dir,  \
-        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir = \
+        nnunet_landmark_model_dir, nnunet_landmark_in_dir, nnunet_landmark_out_dir, num_input_channels = \
         _check_init_paths(args.seg_model, args.nnunet_trainer, args.dataset)
 
     assert torch.cuda.is_available(), "torch CUDA is not available"
 
     # stitch, resize and copy segmentation probability maps,
-    # resize and copy raw TIF images for model input
+    # resize and copy raw TIF images for model input (unless the model was trained
+    # with the segmentation probability map as its sole input channel)
     if args.preprocess:
         _preprocess_input(test_tifs_paths, seg_pred_dir,
-                          nnunet_landmark_in_dir, args.test_run)
+                          nnunet_landmark_in_dir, args.test_run,
+                          single_channel=(num_input_channels == 1))
 
     # compute heatmap regression predictions with the trained nnUNetTrainerHeatmapMSE model
     nnunet_landmark_predictor = initialize_nnunet_landmark_predictor(
