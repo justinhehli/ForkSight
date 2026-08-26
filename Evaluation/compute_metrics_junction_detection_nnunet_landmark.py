@@ -43,7 +43,7 @@ TIF_FILE_ENDING = ".tif"
 # JunctionDetection/nnUNetLandmark/nnunet_landmark_fold_job.sh
 NNUNET_LANDMARK_MODEL_BASE_DIR = "/home/jhehli/data/datasets/nnUNet/nnUNet_results"
 NNUNET_LANDMARK_MODEL_INPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_input"
-NNUNET_LANDMARK_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_output/<TRAINER>"
+NNUNET_LANDMARK_MODEL_OUTPUT_DIR = "/home/jhehli/data/nnUNet_landmark_eval/model_output/<DATASET><TRAINER>"
 
 
 def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
@@ -81,9 +81,11 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
             f"{seg_pred_dir}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_prefix = f"Dataset{dataset_id.zfill(3)}_"
 
     eval_out_dir = Path(EVALUATION_OUTPUT_DIR) / \
-        "junction_detection_nnUNetLandmark" / nnunet_trainer / timestamp
+        "junction_detection_nnUNetLandmark" / \
+        f"{dataset_prefix}{nnunet_trainer}" / timestamp
     eval_out_dir.mkdir(parents=True)
 
     nnunet_landmark_results_dir = Path(NNUNET_LANDMARK_MODEL_BASE_DIR)
@@ -91,7 +93,7 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
     ), f"nnU-Net results directory does not exist ({nnunet_landmark_results_dir})"
 
     dataset_dir = next((p for p in nnunet_landmark_results_dir.iterdir(
-    ) if p.is_dir() and p.name.startswith(f"Dataset{dataset_id.zfill(3)}_")), None)
+    ) if p.is_dir() and p.name.startswith(dataset_prefix)), None)
     assert dataset_dir is not None and dataset_dir.is_dir(
     ), f"nnU-Net dataset directory for dataset ID {dataset_id} does not exist in ({nnunet_landmark_results_dir})"
 
@@ -99,7 +101,7 @@ def _check_init_paths(seg_model: str, nnunet_trainer: str, dataset_id: str):
         f"{nnunet_trainer}__nnUNetPlans__2d"
     nnunet_landmark_in_dir = Path(NNUNET_LANDMARK_MODEL_INPUT_DIR)
     nnunet_landmark_out_dir = Path(NNUNET_LANDMARK_MODEL_OUTPUT_DIR.replace(
-        "<TRAINER>", nnunet_trainer)) / timestamp
+        "<DATASET>", dataset_prefix).replace("<TRAINER>", nnunet_trainer)) / timestamp
 
     assert nnunet_landmark_model_dir.is_dir() and nnunet_landmark_in_dir.is_dir()
     nnunet_landmark_out_dir.mkdir(parents=True)
