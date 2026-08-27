@@ -40,7 +40,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JOB_SCRIPT="${SCRIPT_DIR}/nnunet_landmark_fold_job.sh"
 
 NUM_FOLDS="${NUM_FOLDS:-5}"
-NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "${DATASET:-11}")
+NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "$((10#${DATASET:-11}))")
 TRAINER="${1:-nnUNetTrainerHeatmapMSE}"
 
 # VALID_TRAINERS=(

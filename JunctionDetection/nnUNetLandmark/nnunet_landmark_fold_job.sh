@@ -31,7 +31,7 @@ export PYTHONUNBUFFERED=1
 
 : "${FOLD:?FOLD env var is required (0-4)}"
 TRAINER="${TRAINER:-nnUNetTrainerHeatmapMSE}"
-NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "${DATASET:-11}")
+NNUNET_LANDMARK_DATASET_ID=$(printf "%03d" "$((10#${DATASET:-11}))")
 
 REPO_ROOT="/home/jhehli/data/ForkSight"
 cd "$REPO_ROOT"
