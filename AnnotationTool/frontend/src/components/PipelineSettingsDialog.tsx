@@ -275,53 +275,46 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
               </Typography>
               <FormControl fullWidth>
                 <RadioGroup
-                  row
                   value={settings.pipeline_mode}
                   onChange={(e) => setSettings({ ...settings, pipeline_mode: e.target.value as PipelineMode })}
+                  sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 3 }}
                 >
-                  <FormControlLabel
-                    value={PipelineMode.Sequential}
-                    control={<Radio size="small" />}
-                    label="Sequential"
-                  />
-                  <FormControlLabel value={PipelineMode.Staged} control={<Radio size="small" />} label="Staged" />
+                  <Box>
+                    <FormControlLabel
+                      value={PipelineMode.Sequential}
+                      control={<Radio size="small" />}
+                      label="Sequential"
+                    />
+                    <TextField
+                      label="Target fork number to be found"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      sx={{ mt: 0.5 }}
+                      value={settings.sequential_target_junction_count}
+                      onChange={(e) =>
+                        setSettings({ ...settings, sequential_target_junction_count: Number(e.target.value) })
+                      }
+                      error={!(settings.sequential_target_junction_count > 0)}
+                      inputProps={{ min: 1 }}
+                    />
+                  </Box>
+
+                  <Box>
+                    <FormControlLabel value={PipelineMode.Staged} control={<Radio size="small" />} label="Staged" />
+                    <TextField
+                      label="Subsample size (number of tiles)"
+                      type="number"
+                      size="small"
+                      fullWidth
+                      sx={{ mt: 0.5 }}
+                      value={settings.staged_sample_count}
+                      onChange={(e) => setSettings({ ...settings, staged_sample_count: Number(e.target.value) })}
+                      error={!(settings.staged_sample_count > 0)}
+                      inputProps={{ min: 1 }}
+                    />
+                  </Box>
                 </RadioGroup>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 0.5 }}>
-                  <TextField
-                    label={
-                      settings.pipeline_mode === PipelineMode.Sequential
-                        ? "Target fork number to be found"
-                        : "Subsample size (number of tiles)"
-                    }
-                    type="number"
-                    size="small"
-                    sx={{ width: 260, flexShrink: 0 }}
-                    value={
-                      settings.pipeline_mode === PipelineMode.Sequential
-                        ? settings.sequential_target_junction_count
-                        : settings.staged_sample_count
-                    }
-                    onChange={(e) => {
-                      const value = Number(e.target.value);
-                      setSettings(
-                        settings.pipeline_mode === PipelineMode.Sequential
-                          ? { ...settings, sequential_target_junction_count: value }
-                          : { ...settings, staged_sample_count: value },
-                      );
-                    }}
-                    error={
-                      settings.pipeline_mode === PipelineMode.Sequential
-                        ? !(settings.sequential_target_junction_count > 0)
-                        : !(settings.staged_sample_count > 0)
-                    }
-                    inputProps={{ min: 1 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {settings.pipeline_mode === PipelineMode.Sequential
-                      ? "Tiles are randomly sampled and processed one at a time until this many total forks have been found."
-                      : "This many randomly sampled tiles are processed in full, regardless of the number of found forks."}
-                  </Typography>
-                </Box>
               </FormControl>
 
               <Typography variant="subtitle2" sx={{ mt: 2 }}>
