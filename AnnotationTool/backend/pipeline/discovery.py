@@ -28,10 +28,6 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-from Segmentation.PreProcessing.General.tile_naming_util import (
-    get_display_name as _get_layered_tile_display_name,
-)
-
 _ANNOTATION_TOOL_ENV_PATH = Path(
     __file__).resolve().parents[2] / ".annotation_tool_env"
 _env_values = dotenv_values(_ANNOTATION_TOOL_ENV_PATH)
@@ -259,17 +255,17 @@ def find_project_tiles(base_folder: Path) -> list[Path]:
 
 
 def get_tile_display_name(tile_path: Path) -> str:
-    """Name shown for a tile in the UI/exports.
-
-    PROD/DEV tiles follow the Tile Set (N)/Tile_X-Y-000000_0-000.tif naming
-    convention, from which a "Tile Set N - Tile X Y" name is derived. TRAIN
-    tiles are flat, arbitrarily-named TIFs with no such structure, so their
-    own file name is used as-is.
-    """
+    """Name shown for a tile in the UI/exports"""
     tile_path = Path(tile_path)
     if IS_TRAIN_ENV:
         return tile_path.name
-    return _get_layered_tile_display_name(tile_path)
+
+    tile_name = tile_path.stem.replace("-000000_0-000", "")
+    try:
+        tile_number = tile_name.split("_", 1)[-1].replace("-", " ")
+        return f"{tile_path.parent.name} - Tile {tile_number}"
+    except:
+        return f"{tile_path.parent.name} - {tile_name}"
 
 
 _NETWORK_FS_TYPES = {
