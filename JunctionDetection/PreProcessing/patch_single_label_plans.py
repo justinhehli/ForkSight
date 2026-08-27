@@ -27,6 +27,7 @@ from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_datas
 from Segmentation.Util.nnunet_util import NNUNET_PLANS
 
 SINGLE_HEAD_LABEL_MANAGER_NAME = "SingleHeadLabelManager"
+DEFAULT_LABEL_MANAGER_NAME = "LabelManager"
 
 
 def patch_single_label_plans(dataset_name_or_id: str) -> None:
@@ -63,7 +64,7 @@ def patch_single_label_plans(dataset_name_or_id: str) -> None:
         print(
             f"{plans_path} already has label_manager={SINGLE_HEAD_LABEL_MANAGER_NAME}, nothing to do")
         return
-    if current is not None:
+    if current is not None and current != DEFAULT_LABEL_MANAGER_NAME:
         raise ValueError(
             f"{plans_path} already has label_manager={current!r}, refusing to overwrite it with "
             f"{SINGLE_HEAD_LABEL_MANAGER_NAME!r}")
