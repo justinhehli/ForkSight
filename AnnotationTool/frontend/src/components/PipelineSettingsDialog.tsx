@@ -268,63 +268,69 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
               </Typography>
 
               <Typography variant="subtitle2" sx={{ mt: 1.5 }}>
-                Detection pipeline
+                Detection pipeline mode
               </Typography>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
                 Default mode used when a project's fork detection starts. Applies the next time detection is run.
               </Typography>
               <FormControl fullWidth>
                 <RadioGroup
+                  row
                   value={settings.pipeline_mode}
                   onChange={(e) => setSettings({ ...settings, pipeline_mode: e.target.value as PipelineMode })}
                 >
-                  <Box sx={{ mb: 1 }}>
-                    <FormControlLabel
-                      value={PipelineMode.Sequential}
-                      control={<Radio size="small" />}
-                      label="Sequential"
-                    />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mb: 1.5 }}>
-                      Tiles are randomly sampled and processed sequentially one at a time until a pre-defined number
-                      total forks have been found.
-                    </Typography>
-                    <TextField
-                      label="Target fork number to be found"
-                      type="number"
-                      size="small"
-                      sx={{ ml: 4, width: 280 }}
-                      value={settings.sequential_target_junction_count}
-                      onChange={(e) =>
-                        setSettings({ ...settings, sequential_target_junction_count: Number(e.target.value) })
-                      }
-                      error={!(settings.sequential_target_junction_count > 0)}
-                      inputProps={{ min: 1 }}
-                    />
-                  </Box>
-
-                  <Box>
-                    <FormControlLabel value={PipelineMode.Staged} control={<Radio size="small" />} label="Staged" />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mb: 1.5 }}>
-                      A random subsample of tiles is processed in full, regardless of the number of found forks.
-                    </Typography>
-                    <TextField
-                      label="Subsample size (number of tiles)"
-                      type="number"
-                      size="small"
-                      sx={{ ml: 4, width: 280 }}
-                      value={settings.staged_sample_count}
-                      onChange={(e) => setSettings({ ...settings, staged_sample_count: Number(e.target.value) })}
-                      error={!(settings.staged_sample_count > 0)}
-                      inputProps={{ min: 1 }}
-                    />
-                  </Box>
+                  <FormControlLabel
+                    value={PipelineMode.Sequential}
+                    control={<Radio size="small" />}
+                    label="Sequential"
+                  />
+                  <FormControlLabel value={PipelineMode.Staged} control={<Radio size="small" />} label="Staged" />
                 </RadioGroup>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 0.5 }}>
+                  <TextField
+                    label={
+                      settings.pipeline_mode === PipelineMode.Sequential
+                        ? "Target fork number to be found"
+                        : "Subsample size (number of tiles)"
+                    }
+                    type="number"
+                    size="small"
+                    sx={{ width: 260, flexShrink: 0 }}
+                    value={
+                      settings.pipeline_mode === PipelineMode.Sequential
+                        ? settings.sequential_target_junction_count
+                        : settings.staged_sample_count
+                    }
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setSettings(
+                        settings.pipeline_mode === PipelineMode.Sequential
+                          ? { ...settings, sequential_target_junction_count: value }
+                          : { ...settings, staged_sample_count: value },
+                      );
+                    }}
+                    error={
+                      settings.pipeline_mode === PipelineMode.Sequential
+                        ? !(settings.sequential_target_junction_count > 0)
+                        : !(settings.staged_sample_count > 0)
+                    }
+                    inputProps={{ min: 1 }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {settings.pipeline_mode === PipelineMode.Sequential
+                      ? "Tiles are randomly sampled and processed one at a time until this many total forks have been found."
+                      : "This many randomly sampled tiles are processed in full, regardless of the number of found forks."}
+                  </Typography>
+                </Box>
               </FormControl>
 
-              <Typography variant="subtitle2">Tile discovery (default)</Typography>
+              <Typography variant="subtitle2" sx={{ mt: 2 }}>
+                Tile discovery (default)
+              </Typography>
               <Typography variant="caption" color="text.secondary" display="block">
-                Where to look for tiles inside a project's folder, relative to that folder. Can be overridden for the
-                currently selected project below.
+                Where to look for tiles inside a project's folder, relative to that folder. All files matched by either
+                of these patterns below will be fed into the automatic fork detection pipeline. Can be overridden for
+                the currently selected project below.
               </Typography>
               <GlobPatternListEditor
                 patterns={settings.tile_glob_patterns}
@@ -333,12 +339,14 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
 
               {!isTrainEnv && (
                 <>
-                  <Typography variant="subtitle2">Project discovery</Typography>
+                  <Typography variant="subtitle2" sx={{ mt: 2 }}>
+                    Project discovery
+                  </Typography>
                   <Typography variant="caption" color="text.secondary" display="block">
                     Controls which folders are recognized as project candidates. A folder is recognized as a project if
-                    it matches any one of the rules below. A rule consists of multiple conditions that must ALL be met,
-                    where either a file of (nested) folder must exist inside a directory to recognize it as a project
-                    folder.
+                    it matches ANY one of the rules below. A rule consists of multiple conditions that must ALL be met
+                    for the rule to be satisfied, where files or (nested) folders must exist inside a directory to
+                    recognize it as a project folder.
                   </Typography>
                   <ProjectDiscoveryRulesEditor
                     rules={settings.project_discovery_rules}
