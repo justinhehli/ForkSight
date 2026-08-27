@@ -271,7 +271,9 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
                 Detection pipeline mode
               </Typography>
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                Default mode used when a project's fork detection starts. Applies the next time detection is run.
+                Default mode used when a project's fork detection starts. Sequential mode processes 
+                randomly sampled tiles one by one until N forks are found, staged mode processes a random
+                subsample of M tiles. Applies the next time detection is run.
               </Typography>
               <FormControl fullWidth>
                 <RadioGroup
@@ -317,7 +319,7 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
                 </RadioGroup>
               </FormControl>
 
-              <Typography variant="subtitle2" sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mt: 3 }}>
                 Tile discovery (default)
               </Typography>
               <Typography variant="caption" color="text.secondary" display="block">
@@ -332,14 +334,14 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
 
               {!isTrainEnv && (
                 <>
-                  <Typography variant="subtitle2" sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mt: 3 }}>
                     Project discovery
                   </Typography>
                   <Typography variant="caption" color="text.secondary" display="block">
                     Controls which folders are recognized as project candidates. A folder is recognized as a project if
                     it matches ANY one of the rules below. A rule consists of multiple conditions that must ALL be met
-                    for the rule to be satisfied, where files or (nested) folders must exist inside a directory to
-                    recognize it as a project folder.
+                    for the rule to be satisfied, where files or (nested) folders that must exist within a potential
+                    project folder can be specified.
                   </Typography>
                   <ProjectDiscoveryRulesEditor
                     rules={settings.project_discovery_rules}
