@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Add as AddIcon,
-  Close as CloseIcon,
-} from "@mui/icons-material";
+import { Add as AddIcon, Close as CloseIcon } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -72,7 +69,12 @@ const GlobPatternListEditor = ({
         </IconButton>
       </Box>
     ))}
-    <Button size="small" startIcon={<AddIcon />} onClick={() => onChange([...patterns, ""])} sx={{ alignSelf: "flex-start" }}>
+    <Button
+      size="small"
+      startIcon={<AddIcon />}
+      onClick={() => onChange([...patterns, ""])}
+      sx={{ alignSelf: "flex-start" }}
+    >
       Add pattern
     </Button>
   </Stack>
@@ -99,7 +101,11 @@ const ProjectDiscoveryRulesEditor = ({
             <Typography variant="caption" color="text.secondary">
               All of the following must exist in the folder:
             </Typography>
-            <IconButton size="small" onClick={() => onChange(rules.filter((_, i) => i !== ruleIdx))} disabled={rules.length <= 1}>
+            <IconButton
+              size="small"
+              onClick={() => onChange(rules.filter((_, i) => i !== ruleIdx))}
+              disabled={rules.length <= 1}
+            >
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
@@ -135,7 +141,12 @@ const ProjectDiscoveryRulesEditor = ({
                 />
                 <IconButton
                   size="small"
-                  onClick={() => updateRule(ruleIdx, rule.filter((_, j) => j !== condIdx))}
+                  onClick={() =>
+                    updateRule(
+                      ruleIdx,
+                      rule.filter((_, j) => j !== condIdx),
+                    )
+                  }
                   disabled={rule.length <= 1}
                 >
                   <CloseIcon fontSize="small" />
@@ -153,7 +164,12 @@ const ProjectDiscoveryRulesEditor = ({
           </Stack>
         </Paper>
       ))}
-      <Button size="small" startIcon={<AddIcon />} onClick={() => onChange([...rules, emptyRule()])} sx={{ alignSelf: "flex-start" }}>
+      <Button
+        size="small"
+        startIcon={<AddIcon />}
+        onClick={() => onChange([...rules, emptyRule()])}
+        sx={{ alignSelf: "flex-start" }}
+      >
         Add rule
       </Button>
     </Stack>
@@ -178,10 +194,7 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
     setLoading(true);
     setError(null);
 
-    Promise.all([
-      getPipelineSettings(),
-      showProjectSection ? getProjectTileSettings(project) : Promise.resolve(null),
-    ])
+    Promise.all([getPipelineSettings(), showProjectSection ? getProjectTileSettings(project) : Promise.resolve(null)])
       .then(([globalSettings, projectTileSettings]) => {
         setSettings(globalSettings);
         setGlobalDefaultPatterns(globalSettings.tile_glob_patterns);
@@ -266,10 +279,14 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
                   onChange={(e) => setSettings({ ...settings, pipeline_mode: e.target.value as PipelineMode })}
                 >
                   <Box sx={{ mb: 1 }}>
-                    <FormControlLabel value={PipelineMode.Sequential} control={<Radio size="small" />} label="Sequential" />
+                    <FormControlLabel
+                      value={PipelineMode.Sequential}
+                      control={<Radio size="small" />}
+                      label="Sequential"
+                    />
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 4, mb: 1.5 }}>
-                      Tiles are randomly sampled and processed sequentially one at a time until a pre-defined number total
-                      forks have been found.
+                      Tiles are randomly sampled and processed sequentially one at a time until a pre-defined number
+                      total forks have been found.
                     </Typography>
                     <TextField
                       label="Target fork number to be found"
@@ -304,13 +321,10 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
                 </RadioGroup>
               </FormControl>
 
-              <Divider sx={{ my: 2 }} />
-
               <Typography variant="subtitle2">Tile discovery (default)</Typography>
               <Typography variant="caption" color="text.secondary" display="block">
-                Where to look for tiles inside a project's folder, relative to that folder. A project's tiles are the
-                union of everything matched by these patterns. Can be overridden for the currently selected project
-                below.
+                Where to look for tiles inside a project's folder, relative to that folder. Can be overridden for the
+                currently selected project below.
               </Typography>
               <GlobPatternListEditor
                 patterns={settings.tile_glob_patterns}
@@ -319,12 +333,12 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
 
               {!isTrainEnv && (
                 <>
-                  <Divider sx={{ my: 2 }} />
-
                   <Typography variant="subtitle2">Project discovery</Typography>
                   <Typography variant="caption" color="text.secondary" display="block">
-                    Controls which folders show up as project candidates in "Manage projects". A folder is recognized
-                    as a project if it matches any one of these rules.
+                    Controls which folders are recognized as project candidates. A folder is recognized as a project if
+                    it matches any one of the rules below. A rule consists of multiple conditions that must ALL be met,
+                    where either a file of (nested) folder must exist inside a directory to recognize it as a project
+                    folder.
                   </Typography>
                   <ProjectDiscoveryRulesEditor
                     rules={settings.project_discovery_rules}
@@ -349,7 +363,8 @@ const PipelineSettingsDialog = ({ open, onClose, isTrainEnv, project }: Props) =
                         checked={projectOverrideEnabled}
                         onChange={(e) => {
                           setProjectOverrideEnabled(e.target.checked);
-                          if (e.target.checked) setProjectPatterns((prev) => (prev.some((p) => p.trim()) ? prev : globalDefaultPatterns));
+                          if (e.target.checked)
+                            setProjectPatterns((prev) => (prev.some((p) => p.trim()) ? prev : globalDefaultPatterns));
                         }}
                       />
                     }
