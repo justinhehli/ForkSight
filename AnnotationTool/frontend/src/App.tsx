@@ -1103,7 +1103,12 @@ const App = () => {
           </Box>
         </DialogContent>
       </Dialog>
-      <PipelineSettingsDialog open={pipelineSettingsOpen} onClose={() => setPipelineSettingsOpen(false)} />
+      <PipelineSettingsDialog
+        open={pipelineSettingsOpen}
+        onClose={() => setPipelineSettingsOpen(false)}
+        isTrainEnv={isTrainEnv}
+        project={selectedProject}
+      />
       <AdditionalDetectionDialog
         open={additionalRunOpen}
         mode={annotations.pipeline_mode}

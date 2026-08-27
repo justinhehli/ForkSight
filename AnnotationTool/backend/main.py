@@ -42,9 +42,11 @@ from AnnotationTool.backend.pipeline.discovery import (
     fork_detection_dir,
     list_candidate_dirs,
     load_pipeline_settings,
+    load_project_tile_settings,
     load_registered_projects,
     resolve_unc_path,
     save_pipeline_settings,
+    save_project_tile_glob_patterns_override,
     save_registered_projects,
 )
 from AnnotationTool.backend.pipeline.annotations_store import (
@@ -125,10 +127,25 @@ class CreateLabelWrapper(BaseModel):
     label: str
 
 
+class DiscoveryConditionModel(BaseModel):
+    type: str
+    pattern: str
+
+
 class PipelineSettingsModel(BaseModel):
     pipeline_mode: str
     sequential_target_junction_count: int
     staged_sample_count: int
+    # Global default tile discovery glob patterns (relative to a project dir)
+    tile_glob_patterns: list[str]
+    # Project discovery patterns (OR of ANDs list)
+    project_discovery_rules: list[list[DiscoveryConditionModel]]
+
+
+class ProjectTileSettingsModel(BaseModel):
+    # Project-specific tile discovery patterns
+    # None (or empty) clears the override and falls back to the global
+    tile_glob_patterns: list[str] | None = None
 
 
 # concurrency
@@ -252,10 +269,47 @@ def set_pipeline_settings(settings: PipelineSettingsModel) -> dict:
         raise HTTPException(
             400, "staged_sample_count must be positive")
 
+    tile_glob_patterns = [p.strip()
+                          for p in settings.tile_glob_patterns if p.strip()]
+    if not tile_glob_patterns:
+        raise HTTPException(
+            400, "At least one tile discovery pattern is required")
+
+    project_discovery_rules = [
+        [{"type": c.type, "pattern": c.pattern.strip()}
+         for c in rule if c.pattern.strip()]
+        for rule in settings.project_discovery_rules
+    ]
+    project_discovery_rules = [
+        rule for rule in project_discovery_rules if rule]
+    if not project_discovery_rules:
+        raise HTTPException(
+            400, "At least one project discovery rule is required")
+    for rule in project_discovery_rules:
+        for condition in rule:
+            if condition["type"] not in ("file", "dir"):
+                raise HTTPException(
+                    400, f"Invalid discovery condition type '{condition['type']}'")
+
     save_pipeline_settings(
         PROJECTS_PARENT_DIR, settings.pipeline_mode, settings.sequential_target_junction_count,
-        settings.staged_sample_count)
+        settings.staged_sample_count, tile_glob_patterns, project_discovery_rules)
     return load_pipeline_settings(PROJECTS_PARENT_DIR)
+
+
+@app.get("/projects/{project:path}/tile-settings")
+def get_project_tile_settings(project: str) -> dict:
+    pd = project_dir(project)
+    return load_project_tile_settings(pd)
+
+
+@app.post("/projects/{project:path}/tile-settings")
+def set_project_tile_settings(project: str, settings: ProjectTileSettingsModel) -> dict:
+    pd = project_dir(project)
+    patterns = [p.strip()
+                for p in (settings.tile_glob_patterns or []) if p.strip()]
+    save_project_tile_glob_patterns_override(pd, patterns or None)
+    return load_project_tile_settings(pd)
 
 
 @app.get("/project-candidates/{name:path}/path")

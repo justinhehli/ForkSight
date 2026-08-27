@@ -4,18 +4,22 @@ The tool runs in one of three environments (ANNOTATION_TOOL_ENV): PROD, DEV
 or TRAIN - see ToolEnvironment below. Each has its own parent dir
 (PROJECTS_PARENT_DIR_<ENV> in .annotation_tool_env).
 
-In PROD/DEV, a "project" is a base folder containing raw microscope tiles
-like ``<base_folder>/LayersData/highmag/Tile Set (N)/Tile_X-Y-000000_0-000.tif``.
+In PROD/DEV, a "project" is a base folder containing raw microscope tiles,
+by default at ``<base_folder>/LayersData/highmag/Tile Set (N)/Tile_X-Y-000000_0-000.tif``
+(see DEFAULT_TILE_GLOB_PATTERNS - configurable, and overridable per project).
 A base folder can be nested arbitrarily deep anywhere under
-PROJECTS_PARENT_DIR, the user registers individual ones in a small registry
-file stored in this parent directory. Each "registered" project is
-identified by its path relative to PROJECTS_PARENT_DIR.
+PROJECTS_PARENT_DIR; which directories are even offered as project
+candidates is determined by DEFAULT_PROJECT_DISCOVERY_RULES (also
+configurable, globally only). The user registers individual candidates in a
+small registry file stored in this parent directory. Each "registered"
+project is identified by its path relative to PROJECTS_PARENT_DIR.
 
 In TRAIN, PROJECTS_PARENT_DIR directly contains the TIF images to process
 (no LayersData/highmag nesting) and is itself the only "project" - there is
 no discovery/registration step, see TRAIN_PROJECT_NAME.
 """
 
+import copy
 import json
 import os
 import re
@@ -77,9 +81,23 @@ AUTOMATIC_FORK_DETECTION_DIR_NAME = _get_env(
 REGISTRY_FILENAME = _get_env(
     "REGISTRY_FILENAME", ".forksight-annotator-projects.json")
 
-# PROD/DEV enforce the LayersData/highmag/Tile Set (N)/ nesting; TRAIN just
-# discovers all TIFs directly under the project dir.
-TILE_GLOB_PATTERN = "*.tif" if IS_TRAIN_ENV else "LayersData/highmag/Tile Set (*)/*.tif"
+# PROD/DEV enforce the LayersData/highmag/Tile Set (N)/ nesting by default;
+# TRAIN just discovers all TIFs directly under the project dir. Configurable
+# globally (see load_pipeline_settings) and overridable per project (see
+# load_project_tile_settings).
+DEFAULT_TILE_GLOB_PATTERNS = ["*.tif"] if IS_TRAIN_ENV else [
+    "LayersData/highmag/Tile Set (*)/*.tif"]
+
+# A project discovery rule (nested list) is a list of conditions that must ALL be met
+# (a file or a possibly-nested subfolder existing) for a directory to qualify as
+# a project; a directory qualifies if it satisfies ANY configured rule (in the list of rules = outer list)
+# Configurable globally only, see load_pipeline_settings.
+DEFAULT_PROJECT_DISCOVERY_RULES = [
+    [
+        {"type": "file", "pattern": "*.mapsxml"},
+        {"type": "dir", "pattern": "LayersData/highmag"},
+    ],
+]
 
 SEGMENTATION_DIR_NAME = "Segmentation"
 SEGMENTATION_PROBABILITIES_DIR_NAME = "SegmentationProbabilities"
@@ -95,8 +113,24 @@ DEFAULT_STAGED_SAMPLE_COUNT = int(
     _get_env("DEFAULT_STAGED_SAMPLE_COUNT", "300"))
 
 
-def is_valid_project_dir(path: Path) -> bool:
-    return any(p.is_file() for p in path.glob("*.mapsxml")) and (path / "LayersData" / "highmag").is_dir()
+def _discovery_condition_matches(path: Path, condition: dict) -> bool:
+    pattern = (condition.get("pattern") or "").strip()
+    if not pattern:
+        return False
+    kind = condition.get("type")
+    if kind == "file":
+        return any(p.is_file() for p in path.glob(pattern))
+    if kind == "dir":
+        return any(p.is_dir() for p in path.glob(pattern))
+    return False
+
+
+def is_valid_project_dir(path: Path, rules: list[list[dict]]) -> bool:
+    return any(
+        rule and all(_discovery_condition_matches(path, condition)
+                     for condition in rule)
+        for rule in rules
+    )
 
 
 def fork_detection_dir(base_dir: Path) -> Path:
@@ -131,8 +165,11 @@ def save_registered_projects(parent_dir: Path, names: list[str]) -> None:
 
 
 def load_pipeline_settings(parent_dir: Path) -> dict:
-    """Keys match the registry JSON's own field names, with defaults filled
-    in for any that are missing."""
+    """Global settings, apply to every project under `parent_dir` unless a
+    project overrides them (currently only tile_glob_patterns can be
+    overridden, see load_project_tile_settings). Keys match the registry
+    JSON's own field names, with defaults filled in for any that are
+    missing."""
     data = _load_registry(parent_dir)
     return {
         "pipeline_mode": data.get("pipeline_mode", "sequential"),
@@ -140,26 +177,58 @@ def load_pipeline_settings(parent_dir: Path) -> dict:
             "sequential_target_junction_count", DEFAULT_TARGET_JUNCTION_COUNT),
         "staged_sample_count": data.get(
             "staged_sample_count", DEFAULT_STAGED_SAMPLE_COUNT),
+        "tile_glob_patterns": data.get(
+            "tile_glob_patterns") or list(DEFAULT_TILE_GLOB_PATTERNS),
+        "project_discovery_rules": data.get(
+            "project_discovery_rules") or copy.deepcopy(DEFAULT_PROJECT_DISCOVERY_RULES),
     }
 
 
 def save_pipeline_settings(
     parent_dir: Path, pipeline_mode: str, sequential_target_junction_count: int,
-    staged_sample_count: int,
+    staged_sample_count: int, tile_glob_patterns: list[str],
+    project_discovery_rules: list[list[dict]],
 ) -> None:
     data = _load_registry(parent_dir)
     data["pipeline_mode"] = pipeline_mode
     data["sequential_target_junction_count"] = sequential_target_junction_count
     data["staged_sample_count"] = staged_sample_count
+    data["tile_glob_patterns"] = tile_glob_patterns
+    data["project_discovery_rules"] = project_discovery_rules
     _save_registry(parent_dir, data)
+
+
+def load_project_tile_settings(project_dir: Path) -> dict:
+    """Per-project override of the global tile_glob_patterns, stored in the
+    project's own AutomaticForkDetection dir rather than the global registry.
+    `tile_glob_patterns_override` is None when the project just uses the
+    global default patterns."""
+    project_dir = Path(project_dir)
+    override = _load_registry(project_dir).get("tile_glob_patterns") or None
+    return {
+        "tile_glob_patterns_override": override,
+        "effective_tile_glob_patterns": override or load_pipeline_settings(
+            PROJECTS_PARENT_DIR)["tile_glob_patterns"],
+    }
+
+
+def save_project_tile_glob_patterns_override(project_dir: Path, patterns: list[str] | None) -> None:
+    project_dir = Path(project_dir)
+    data = _load_registry(project_dir)
+    if patterns:
+        data["tile_glob_patterns"] = patterns
+    else:
+        data.pop("tile_glob_patterns", None)
+    _save_registry(project_dir, data)
 
 
 def find_candidate_project_dirs(parent_dir: Path) -> list[Path]:
     parent_dir = Path(parent_dir)
+    rules = load_pipeline_settings(parent_dir)["project_discovery_rules"]
     found = []
     for dirpath, dirnames, _ in os.walk(parent_dir):
         current = Path(dirpath)
-        if is_valid_project_dir(current):
+        if is_valid_project_dir(current, rules):
             found.append(current)
             dirnames[:] = []
     return sorted(found)
@@ -180,7 +249,13 @@ def list_candidate_dirs(parent_dir: Path) -> list[dict]:
 
 
 def find_project_tiles(base_folder: Path) -> list[Path]:
-    return sorted(Path(base_folder).glob(TILE_GLOB_PATTERN))
+    base_folder = Path(base_folder)
+    patterns = load_project_tile_settings(
+        base_folder)["effective_tile_glob_patterns"]
+    found: set[Path] = set()
+    for pattern in patterns:
+        found.update(base_folder.glob(pattern))
+    return sorted(found)
 
 
 def get_tile_display_name(tile_path: Path) -> str:

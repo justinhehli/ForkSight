@@ -5,6 +5,7 @@ import {
   PipelineSettings,
   ProjectAnnotations,
   ProjectCandidate,
+  ProjectTileSettings,
 } from "./types";
 
 // const BASE = "http://localhost:8000";
@@ -170,4 +171,14 @@ export const setPipelineSettings = (settings: PipelineSettings) =>
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
+  });
+
+export const getProjectTileSettings = (project: string) =>
+  request<ProjectTileSettings>(`${BASE}/projects/${encodeProjectPath(project)}/tile-settings`);
+
+export const setProjectTileSettings = (project: string, tileGlobPatterns: string[] | null) =>
+  request<ProjectTileSettings>(`${BASE}/projects/${encodeProjectPath(project)}/tile-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tile_glob_patterns: tileGlobPatterns }),
   });

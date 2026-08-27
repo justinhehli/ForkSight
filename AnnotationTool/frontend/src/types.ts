@@ -56,10 +56,31 @@ export enum PipelineMode {
   Staged = "staged",
 }
 
+export type DiscoveryConditionType = "file" | "dir";
+
+export interface DiscoveryCondition {
+  type: DiscoveryConditionType;
+  pattern: string;
+}
+
+// A candidate directory qualifies as a project if it satisfies ANY rule,
+// where a rule is a list of conditions that must ALL be met.
+export type ProjectDiscoveryRule = DiscoveryCondition[];
+
 export interface PipelineSettings {
+  // Applies globally, to every project.
   pipeline_mode: PipelineMode;
   sequential_target_junction_count: number;
   staged_sample_count: number;
+  tile_glob_patterns: string[];
+  project_discovery_rules: ProjectDiscoveryRule[];
+}
+
+export interface ProjectTileSettings {
+  // Per-project override of the global tile_glob_patterns; null means the
+  // project just uses the global default.
+  tile_glob_patterns_override: string[] | null;
+  effective_tile_glob_patterns: string[];
 }
 
 export interface Point {

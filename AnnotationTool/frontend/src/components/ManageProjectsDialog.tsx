@@ -97,10 +97,10 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Manage projects</DialogTitle>
-      <DialogContent dividers sx={{ maxHeight: 420 }}>
+      <DialogContent sx={{ maxHeight: 420 }}>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-          Select which directories should show up as projects. Directories with a <code>*.mapsxml</code>{" "} 
-          file and a <code>./LayersData/highmag</code>{" "} sub-directory are considered as candidates.
+          Select which directories should show up as projects. Which directories are considered candidates is
+          configured under Settings &rsaquo; Project discovery.
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 1 }}>
@@ -131,7 +131,7 @@ const ManageProjectsDialog = ({ open, onClose, onSaved }: Props) => {
             {candidates.map((c) => (
               <ListItem key={c.name} disablePadding>
                 <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
-                  <Tooltip title={c.valid ? "" : "No LayersData/highmag folder found in this directory"}>
+                  <Tooltip title={c.valid ? "" : "This directory no longer matches the configured project discovery rules"}>
                     <span>
                       <FormControlLabel
                         control={
