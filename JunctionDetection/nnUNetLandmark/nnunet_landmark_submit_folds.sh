@@ -31,6 +31,11 @@
 #   NNUNET_HEATMAP_SIGMA=4.0 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
 # This takes precedence over any NNUNET_HEATMAP_SIGMA set in Environment/.env (see fold job script).
 #
+# To override the number of training epochs (all heatmap trainers, default 1000) without touching
+# Environment/.env:
+#   NNUNET_NUM_EPOCHS=100 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh [TRAINER]
+# This takes precedence over any NNUNET_NUM_EPOCHS set in Environment/.env (see fold job script).
+#
 # Example: single-combined-label training —
 #   DATASET=13 bash JunctionDetection/nnUNetLandmark/nnunet_landmark_submit_folds.sh nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel
 
@@ -56,17 +61,23 @@ TRAINER="${1:-nnUNetTrainerHeatmapMSE}"
 #     exit 1
 # fi
 
-# Only forwarded to the job (and from there into NNUNET_HEATMAP_SIGMA) if explicitly set here -
-# otherwise the job script falls back to whatever Environment/.env provides.
+# Only forwarded to the job (and from there into NNUNET_HEATMAP_SIGMA/NNUNET_NUM_EPOCHS) if
+# explicitly set here - otherwise the job script falls back to whatever Environment/.env provides.
 EXPORT_VARS="FOLD,TRAINER,DATASET"
 if [[ -n "${NNUNET_HEATMAP_SIGMA:-}" ]]; then
     EXPORT_VARS="${EXPORT_VARS},NNUNET_HEATMAP_SIGMA"
+fi
+if [[ -n "${NNUNET_NUM_EPOCHS:-}" ]]; then
+    EXPORT_VARS="${EXPORT_VARS},NNUNET_NUM_EPOCHS"
 fi
 
 echo "Submitting nnU-Net junction-landmark training — ${NUM_FOLDS} folds, trainer: ${TRAINER}"
 echo "Job script: ${JOB_SCRIPT}"
 if [[ -n "${NNUNET_HEATMAP_SIGMA:-}" ]]; then
     echo "NNUNET_HEATMAP_SIGMA override: ${NNUNET_HEATMAP_SIGMA}"
+fi
+if [[ -n "${NNUNET_NUM_EPOCHS:-}" ]]; then
+    echo "NNUNET_NUM_EPOCHS override: ${NNUNET_NUM_EPOCHS}"
 fi
 echo ""
 

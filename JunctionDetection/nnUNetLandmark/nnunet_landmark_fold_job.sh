@@ -19,6 +19,8 @@
 #   DATASET                — nnU-Net dataset ID (default: 11)
 #   NNUNET_HEATMAP_SIGMA   — optional, heatmap gaussian sigma in pixels; overrides whatever
 #                            Environment/.env sets, see below
+#   NNUNET_NUM_EPOCHS      — optional, total training epochs; overrides whatever
+#                            Environment/.env sets, see below
 
 set -euo pipefail
 
@@ -42,12 +44,15 @@ echo "TRAINER: ${TRAINER}"
 echo "DATASET_ID: ${NNUNET_LANDMARK_DATASET_ID}"
 echo "Job ${SLURM_JOB_ID} on $(hostname)"
 
-# Preserve a NNUNET_HEATMAP_SIGMA passed in via sbatch --export (from the submit script's
-# NNUNET_HEATMAP_SIGMA=... argument) across sourcing .env below - Environment/.env may itself
-# unconditionally set NNUNET_HEATMAP_SIGMA, which would otherwise silently clobber this override.
+# Preserve a NNUNET_HEATMAP_SIGMA/NNUNET_NUM_EPOCHS passed in via sbatch --export (from the submit
+# script's NNUNET_HEATMAP_SIGMA=.../NNUNET_NUM_EPOCHS=... argument) across sourcing .env below -
+# Environment/.env may itself unconditionally set these, which would otherwise silently clobber
+# this override.
 SIGMA_OVERRIDE="${NNUNET_HEATMAP_SIGMA:-}"
+NUM_EPOCHS_OVERRIDE="${NNUNET_NUM_EPOCHS:-}"
 
-# load environment variables (e.g. NNUNET_HEATMAP_SIGMA/THRESHOLD/MIN_DISTANCE, paths, etc.)
+# load environment variables (e.g. NNUNET_HEATMAP_SIGMA/THRESHOLD/MIN_DISTANCE, NNUNET_NUM_EPOCHS,
+# paths, etc.)
 set -a
 source "${REPO_ROOT}/Environment/.env"
 set +a
@@ -55,7 +60,11 @@ set +a
 if [[ -n "${SIGMA_OVERRIDE}" ]]; then
     export NNUNET_HEATMAP_SIGMA="${SIGMA_OVERRIDE}"
 fi
+if [[ -n "${NUM_EPOCHS_OVERRIDE}" ]]; then
+    export NNUNET_NUM_EPOCHS="${NUM_EPOCHS_OVERRIDE}"
+fi
 echo "NNUNET_HEATMAP_SIGMA: ${NNUNET_HEATMAP_SIGMA:-<unset, using trainer default>}"
+echo "NNUNET_NUM_EPOCHS: ${NNUNET_NUM_EPOCHS:-<unset, using trainer default>}"
 
 # activate nnUNet virtual environment
 source ~/.nnUNet_env/bin/activate
