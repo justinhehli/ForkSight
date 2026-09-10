@@ -1,10 +1,16 @@
 """
-Inference utilities for the nnU-Net junction-landmark heatmap-regression model
-(nnUNetTrainerHeatmapMSE)
+Inference utilities for the nnU-Net junction-landmark heatmap-regression models.
 
-reads back the per-case point predictions written by
-nnunetv2.inference.heatmap_export.export_heatmap_prediction_from_logits, 
-which finds any number (zero, one, or many) of local heatmap maxima per label.
+Covers both the multi-class trainer (nnUNetTrainerHeatmapMSE and its variants) and the
+single-combined-label trainer (nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel, used
+with the "combined-label" / "segprob-only-combined-label" dataset copies - see
+JunctionDetection/PreProcessing/create_nnunet_dataset_variants.py) - selected via the
+`single_channel` argument of nnunet_landmark_predict_from_files.
+
+Reads back the per-case point predictions written by
+nnunetv2.inference.heatmap_export.export_heatmap_prediction_from_logits (multi-class) or
+export_single_channel_heatmap_prediction_from_logits (single-label), which find any number (zero,
+one, or many) of local heatmap maxima per label.
 """
 
 from __future__ import annotations
@@ -18,7 +24,10 @@ import numpy as np
 import torch
 
 from nnunetv2.inference.data_iterators import preprocessing_iterator_fromfiles
-from nnunetv2.inference.heatmap_export import export_heatmap_prediction_from_logits
+from nnunetv2.inference.heatmap_export import (
+    export_heatmap_prediction_from_logits,
+    export_single_channel_heatmap_prediction_from_logits,
+)
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 
 from Segmentation.Util.nnunet_util import initialize_nnunet_predictor
@@ -51,6 +60,7 @@ def nnunet_landmark_predict_from_files(
     num_processes_preprocessing: int = 2,
     threshold: float = NNUNET_LANDMARK_DEFAULT_THRESHOLD,
     min_distance: int = NNUNET_LANDMARK_DEFAULT_MIN_DISTANCE,
+    single_label_channel: bool = False,
     verbose: bool = False
 ) -> None:
     """
@@ -64,6 +74,11 @@ def nnunet_landmark_predict_from_files(
     This replaces nnU-Net's default predict_from_files, which is segmentation-shaped (argmax) and
     not applicable to heatmap regression - it reuses the same preprocessing iterator internally, but
     exports through export_heatmap_prediction_from_logits instead.
+
+    single_label_channel: set for models trained on one of the single-combined-label dataset copies
+        (nnUNetTrainerHeatmapAdaptiveWingFocalSoftSamplingSingleLabel) - the model predicts a single
+        heatmap channel, so predictions are exported through
+        export_single_channel_heatmap_prediction_from_logits instead.
     """
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
@@ -104,7 +119,9 @@ def nnunet_landmark_predict_from_files(
             prediction = predictor.predict_logits_from_preprocessed_data(
                 data).cpu().numpy()
 
-        export_heatmap_prediction_from_logits(
+        export_fn = (export_single_channel_heatmap_prediction_from_logits if single_label_channel
+                    else export_heatmap_prediction_from_logits)
+        export_fn(
             prediction, properties, predictor.configuration_manager, predictor.plans_manager,
             predictor.dataset_json, ofile, save_probabilities=save_probabilities,
             threshold=threshold, min_distance=min_distance,
