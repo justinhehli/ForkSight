@@ -76,6 +76,9 @@ def main():
                         help="Directory with nnU-Net prediction patches from segmentation_worker")
     parser.add_argument("--results-out", required=True,
                         help="Path to write the resulting images JSON")
+    parser.add_argument("--output-dir", default=None,
+                        help="Base directory for Segmentation/SegmentationProbabilities "
+                             "output (default: <project-dir>/AutomaticForkDetection)")
     args = parser.parse_args()
 
     env_utils.load_shared_env()
@@ -87,10 +90,11 @@ def main():
 
     patch_dir = Path(args.patch_dir)
 
-    seg_out_dir = project_dir / AUTOMATIC_FORK_DETECTION_DIR_NAME / SEGMENTATION_DIR_NAME
+    output_base = Path(args.output_dir) if args.output_dir else \
+        project_dir / AUTOMATIC_FORK_DETECTION_DIR_NAME
+    seg_out_dir = output_base / SEGMENTATION_DIR_NAME
     seg_out_dir.mkdir(parents=True, exist_ok=True)
-    prob_out_dir = project_dir / AUTOMATIC_FORK_DETECTION_DIR_NAME / \
-        SEGMENTATION_PROBABILITIES_DIR_NAME
+    prob_out_dir = output_base / SEGMENTATION_PROBABILITIES_DIR_NAME
     prob_out_dir.mkdir(parents=True, exist_ok=True)
 
     images = {}

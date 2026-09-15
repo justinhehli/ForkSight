@@ -21,9 +21,11 @@ def pipeline_log_path(project_dir: Path) -> Path:
     return fork_detection_dir(project_dir) / "pipeline.log"
 
 
-def load_annotations(project_dir: Path) -> dict:
+def load_annotations(project_dir: Path, must_exist: bool = False) -> dict:
     p = annotations_file_path(project_dir)
     if not p.exists():
+        if must_exist:
+            raise ValueError(f"annoations file {p} does not exist!")
         return {
             "junction_detection_pipeline_status": PipelineStatus.Idle,
             "pipeline_error": None,
