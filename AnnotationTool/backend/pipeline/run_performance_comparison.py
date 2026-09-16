@@ -212,17 +212,29 @@ def run_performance_comparison(project_dir: Path) -> None:
         summary["full_reviewed"]["reversed_fork_ratio"],
         summary["streamlined_reviewed_predictions_only"]["reversed_fork_ratio"],
     )
-    logger.info("Wrote comparison output to %s", output_dir / "annotations.json")
+    logger.info("Wrote comparison output to %s",
+                output_dir / "annotations.json")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project-dir", required=True, action="append",
-                        help="Project directory to run the comparison for; repeat for multiple projects")
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(
+    #    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # parser.add_argument("--project-dir", required=True, action="append",
+    #                    help="Project directory to run the comparison for; repeat for multiple projects")
+    # args = parser.parse_args()
 
-    for project_dir in args.project_dir:
+    # hardcode project dir paths (as they are on the ScienceCloud VM) instead of passing them as arguments
+    # since this is run only once anyways
+    project_dirs = [
+        "/mnt/lopesgroup/2026_Cyril_CellLines_Ola/260826_NB4+Ola_R1_Cyril",
+        "/mnt/lopesgroup/2026_Cyril_CellLines_Ola/260828_THP1_Ola_R1_Cyril_20260901_0700",
+        "/mnt/lopesgroup/2026_Cyril_CellLines_Ola/talos_transfer_20260819_1200/20260818_Cyril_NB4",
+        "/mnt/lopesgroup/2026_Cyril_CellLines_Ola/talos_transfer_20260828_1000/260827_THP1_R1_Cyril"
+    ]
+
+    for i, project_dir in enumerate(project_dirs, start=1):
+        print(
+            f"{i}/{len(project_dirs)} running performance comparison for project dir {project_dir}")
         run_performance_comparison(Path(project_dir))
 
 
