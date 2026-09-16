@@ -40,6 +40,15 @@ import tempfile
 import uuid
 from pathlib import Path
 
+# Re-segmenting/re-detecting every reviewed tile writes a lot of per-patch
+# scratch data; point tempfile (and, via TMPDIR, the segmentation_worker /
+# detection_worker subprocesses spawned below) at a dedicated scratch dir
+# instead of the regular, often small/tmpfs-backed /tmp - same as
+# backfill_segmentation_probabilities.py.
+SCRATCH_TMP_DIR = Path("/mnt/scratch")
+os.environ["TMPDIR"] = str(SCRATCH_TMP_DIR)
+tempfile.tempdir = str(SCRATCH_TMP_DIR)
+
 from AnnotationTool.backend.pipeline.annotations_store import load_annotations
 from AnnotationTool.backend.pipeline.discovery import PIPELINE_TMP_DIR_PREFIX
 from AnnotationTool.backend.pipeline.progress_util import clear_progress
