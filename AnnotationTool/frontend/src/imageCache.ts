@@ -1,16 +1,21 @@
 import { getImageUrl, getMaskUrl, getNeighborImageUrl } from "./api";
 
-const warm = (url: string): void => {
+// "low" deprioritizes the request (in browsers that support the Fetch
+// Priority API) so it doesn't compete with a fetch the user is actively
+// waiting on - e.g. surrounding-tile/neighbor prefetches shouldn't slow
+// down loading the tile currently on screen.
+const warm = (url: string, priority?: "low"): void => {
   const img = new Image();
+  if (priority) img.fetchPriority = priority;
   img.src = url;
 };
 
-export const prefetchImage = (project: string, imageId: string): void => {
-  warm(getImageUrl(project, imageId));
+export const prefetchImage = (project: string, imageId: string, priority?: "low"): void => {
+  warm(getImageUrl(project, imageId), priority);
 };
 
-export const prefetchMask = (project: string, imageId: string): void => {
-  warm(getMaskUrl(project, imageId));
+export const prefetchMask = (project: string, imageId: string, priority?: "low"): void => {
+  warm(getMaskUrl(project, imageId), priority);
 };
 
 // The 8 tile positions directly surrounding a tile, as (dRow, dCol) offsets.
@@ -26,6 +31,6 @@ export const NEIGHBOR_OFFSETS: [number, number][] = [
 // displays them handles that the same way.
 export const prefetchNeighbors = (project: string, imageId: string): void => {
   for (const [dRow, dCol] of NEIGHBOR_OFFSETS) {
-    warm(getNeighborImageUrl(project, imageId, dRow, dCol));
+    warm(getNeighborImageUrl(project, imageId, dRow, dCol), "low");
   }
 };

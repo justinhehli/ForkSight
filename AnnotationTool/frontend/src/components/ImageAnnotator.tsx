@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, IconButton, Tooltip, Typography } from "@mui/material";
+import { Box, CircularProgress, IconButton, Tooltip, Typography } from "@mui/material";
 import FitScreenIcon from "@mui/icons-material/FitScreen";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
@@ -65,17 +65,25 @@ const ImageAnnotatorComponent = ({
   const [hidePoints, setHidePoints] = useState(false);
   const [showNeighbors, setShowNeighbors] = useState(false);
   const [failedNeighbors, setFailedNeighbors] = useState<Set<string>>(new Set());
+  const [imageLoading, setImageLoading] = useState(true);
 
   useEffect(() => {
     setMaskAvailable(true);
   }, [imageId]);
 
-  // background-load the neighbor tiles as soon as a tile is opened, regardless
-  // of whether they're currently shown, so toggling them on is instant
+  // switching tiles always closes the neighbor view - it's context for the tile
+  // you were just looking at, not the one you're navigating to
   useEffect(() => {
     setFailedNeighbors(new Set());
-    prefetchNeighbors(project, imageId);
-  }, [project, imageId]);
+    setShowNeighbors(false);
+  }, [imageId]);
+
+  // the previous tile stays on screen until the new one finishes loading (see the
+  // main <img> below, which keeps its DOM node across id changes instead of being
+  // recreated) - this just tracks that in-between state to show a loading hint
+  useEffect(() => {
+    setImageLoading(true);
+  }, [imageId]);
 
   // keep refs in sync so event-listener closures read fresh values
   const viewRef = useRef(view);
@@ -282,6 +290,10 @@ const ImageAnnotatorComponent = ({
     if (!img) return;
     setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
     fitToContainer();
+    setImageLoading(false);
+    // deferred until the tile itself is on screen, and sent at low priority, so
+    // this background load never competes with the fetch the user is waiting on
+    prefetchNeighbors(project, imageId);
   };
 
   // reset when image changes
@@ -355,10 +367,11 @@ const ImageAnnotatorComponent = ({
           );
         })}
 
-      {/* Image */}
+      {/* Image - no `key` on imageId: keeping the same DOM node means the browser keeps
+          showing the previous tile's bitmap until the new src finishes loading, instead
+          of flashing to blank the instant imageId changes */}
       <img
         ref={imgRef}
-        key={imageId}
         src={getImageUrl(project, imageId)}
         onLoad={onImageLoad}
         draggable={false}
@@ -371,12 +384,13 @@ const ImageAnnotatorComponent = ({
           height: nh * zoom,
           imageRendering: zoom > 3 ? "pixelated" : "auto",
           pointerEvents: "none",
+          opacity: imageLoading ? 0.5 : 1,
+          transition: "opacity 150ms ease",
         }}
       />
 
-      {/* Predicted segmentation mask overlay */}
+      {/* Predicted segmentation mask overlay - same no-`key` reasoning as the image above */}
       <img
-        key={`${imageId}-mask`}
         src={getMaskUrl(project, imageId)}
         onLoad={() => setMaskAvailable(true)}
         onError={() => setMaskAvailable(false)}
@@ -390,9 +404,36 @@ const ImageAnnotatorComponent = ({
           height: nh * zoom,
           imageRendering: zoom > 3 ? "pixelated" : "auto",
           pointerEvents: "none",
-          opacity: showMask && maskAvailable ? 1 : 0,
+          opacity: showMask && maskAvailable ? (imageLoading ? 0.5 : 1) : 0,
+          transition: "opacity 150ms ease",
         }}
       />
+
+      {/* Loading hint while the new tile's image is still in flight - the previous tile
+          (dimmed above) stays visible underneath so this never shows on a blank canvas */}
+      {imageLoading && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            bgcolor: "rgba(0,0,0,0.55)",
+            color: "#fff",
+            px: 1,
+            py: 0.5,
+            borderRadius: 1,
+            pointerEvents: "none",
+          }}
+        >
+          <CircularProgress size={14} thickness={5} sx={{ color: "#fff" }} />
+          <Typography variant="caption" sx={{ fontSize: 11 }}>
+            Loading tile…
+          </Typography>
+        </Box>
+      )}
 
       {/* SVG annotation overlay — fixed to container, points computed in screen space */}
       <svg

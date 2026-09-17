@@ -257,10 +257,13 @@ const App = () => {
     if (!selectedProject || images.length === 0) return;
 
     for (let offset = -PREFETCH_RADIUS; offset <= PREFETCH_RADIUS; offset++) {
+      // offset 0 (the currently open tile) is already loaded by ImageAnnotator itself -
+      // prefetching it again here would just race that load for the same connection
+      if (offset === 0) continue;
       const img = images[imageIdx + offset];
       if (!img) continue;
-      prefetchImage(selectedProject, img.id);
-      prefetchMask(selectedProject, img.id);
+      prefetchImage(selectedProject, img.id, "low");
+      prefetchMask(selectedProject, img.id, "low");
     }
   }, [selectedProject, imageIdx, imageIdsKey]);
 

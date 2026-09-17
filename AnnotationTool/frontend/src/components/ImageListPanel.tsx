@@ -168,16 +168,26 @@ const ImageListPanel = memo(function ImageListPanel({
           </Tooltip>
         )}
       </Box>
-      <Box sx={{ px: 1.5, pt: 0.75 }}>
+      <Box sx={{ px: 1.5, pt: 0.75, display: "flex", flexDirection: "column", gap: 0.5 }}>
         <ToggleButtonGroup
           value={filter}
           exclusive
+          fullWidth
           size="small"
           onChange={(_e, value: ImageFilter | null) => value && setFilter(value)}
           sx={{ "& .MuiToggleButton-root": { py: 0.25, px: 1, fontSize: 11, textTransform: "none" } }}
         >
           <ToggleButton value="all">All</ToggleButton>
           <ToggleButton value="unprocessed">Unprocessed</ToggleButton>
+        </ToggleButtonGroup>
+        <ToggleButtonGroup
+          value={filter}
+          exclusive
+          fullWidth
+          size="small"
+          onChange={(_e, value: ImageFilter | null) => value && setFilter(value)}
+          sx={{ "& .MuiToggleButton-root": { py: 0.25, px: 1, fontSize: 11, textTransform: "none" } }}
+        >
           <ToggleButton value="processed">Processed</ToggleButton>
           <ToggleButton value="annotated">Annotated</ToggleButton>
         </ToggleButtonGroup>
