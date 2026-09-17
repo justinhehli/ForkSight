@@ -19,6 +19,11 @@ export const getImageUrl = (project: string, imageId: string) =>
 export const getMaskUrl = (project: string, imageId: string) =>
   `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/mask`;
 
+// dRow/dCol are each -1, 0 or 1 (not both 0) - the 8 tile positions directly
+// surrounding imageId's tile.
+export const getNeighborImageUrl = (project: string, imageId: string, dRow: number, dCol: number) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/neighbor?d_row=${dRow}&d_col=${dCol}`;
+
 const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, init);
   if (!response.ok) {

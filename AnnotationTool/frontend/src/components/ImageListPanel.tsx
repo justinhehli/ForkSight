@@ -119,7 +119,7 @@ interface Props {
   onShowArchived: () => void;
 }
 
-type ProcessedFilter = "all" | "unprocessed" | "processed";
+type ImageFilter = "all" | "unprocessed" | "processed" | "annotated";
 
 const ImageListPanel = memo(function ImageListPanel({
   images,
@@ -132,14 +132,23 @@ const ImageListPanel = memo(function ImageListPanel({
   onArchiveImage,
   onShowArchived,
 }: Props) {
-  const [filter, setFilter] = useState<ProcessedFilter>("all");
+  const [filter, setFilter] = useState<ImageFilter>("all");
 
   const visibleImages = useMemo(
     () =>
-      images
-        .map((img, idx) => ({ img, idx }))
-        .filter(({ img }) => filter === "all" || (filter === "processed" ? img.processed : !img.processed)),
-    [images, filter],
+      images.map((img, idx) => ({ img, idx })).filter(({ img }) => {
+        switch (filter) {
+          case "processed":
+            return img.processed;
+          case "unprocessed":
+            return !img.processed;
+          case "annotated":
+            return (imageAnnotations[img.id]?.points.length ?? 0) > 0;
+          default:
+            return true;
+        }
+      }),
+    [images, filter, imageAnnotations],
   );
 
   return (
@@ -164,12 +173,13 @@ const ImageListPanel = memo(function ImageListPanel({
           value={filter}
           exclusive
           size="small"
-          onChange={(_e, value: ProcessedFilter | null) => value && setFilter(value)}
+          onChange={(_e, value: ImageFilter | null) => value && setFilter(value)}
           sx={{ "& .MuiToggleButton-root": { py: 0.25, px: 1, fontSize: 11, textTransform: "none" } }}
         >
           <ToggleButton value="all">All</ToggleButton>
           <ToggleButton value="unprocessed">Unprocessed</ToggleButton>
           <ToggleButton value="processed">Processed</ToggleButton>
+          <ToggleButton value="annotated">Annotated</ToggleButton>
         </ToggleButtonGroup>
       </Box>
       <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>

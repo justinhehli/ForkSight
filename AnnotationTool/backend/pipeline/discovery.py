@@ -268,6 +268,50 @@ def get_tile_display_name(tile_path: Path) -> str:
         return f"{tile_path.parent.name} - {tile_name}"
 
 
+# Raw microscope tiles are named "Tile_XXX-YYY-000000_0-000.tif", where
+# the first number is the (1-based) row and the second the column. Tiles are
+# grouped into non-overlapping 4x4 grids (rows/columns 1-4, 5-8, 9-12, 13-16
+# each forming one grid boundary) - direct neighbours are only ever looked up
+# within the same grid, never across a grid boundary.
+_TILE_ROW_COL_RE = re.compile(r"^(Tile_)(\d{3})-(\d{3})(-.*)$")
+_GRID_SIZE = 4
+
+
+def parse_tile_row_col(tile_path: Path) -> tuple[int, int] | None:
+    """Return the 1-based (row, col) encoded in a raw tile's filename, or
+    None if it doesn't follow the expected naming convention (e.g. TRAIN
+    env tiles, which aren't grouped into grids)."""
+    if IS_TRAIN_ENV:
+        return None
+    m = _TILE_ROW_COL_RE.match(Path(tile_path).stem)
+    if m is None:
+        return None
+    return int(m.group(2)), int(m.group(3))
+
+
+def neighbor_tile_path(tile_path: Path, d_row: int, d_col: int) -> Path | None:
+    """Return the path of the tile directly adjacent to `tile_path` offset
+    by (d_row, d_col) tile positions (each in {-1, 0, 1}, not both 0), or
+    None if that neighbor would fall outside `tile_path`'s 4x4 grid or the
+    file doesn't exist on disk."""
+    tile_path = Path(tile_path)
+    row_col = parse_tile_row_col(tile_path)
+    if row_col is None:
+        return None
+    row, col = row_col
+
+    new_row, new_col = row + d_row, col + d_col
+    same_grid_row = (new_row - 1) // _GRID_SIZE == (row - 1) // _GRID_SIZE
+    same_grid_col = (new_col - 1) // _GRID_SIZE == (col - 1) // _GRID_SIZE
+    if not (same_grid_row and same_grid_col):
+        return None
+
+    m = _TILE_ROW_COL_RE.match(tile_path.stem)
+    new_stem = f"{m.group(1)}{new_row:03d}-{new_col:03d}{m.group(4)}"
+    neighbor_path = tile_path.with_name(new_stem + tile_path.suffix)
+    return neighbor_path if neighbor_path.is_file() else None
+
+
 _NETWORK_FS_TYPES = {
     "cifs", "smb3", "smbfs", "nfs", "nfs2", "nfs3", "nfs4", "fuse.sshfs",
 }

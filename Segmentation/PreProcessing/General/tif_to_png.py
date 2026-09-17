@@ -83,10 +83,10 @@ def normalize_convert_uint8(img: Image.Image, soi_coords: Optional[Tuple[int, in
     return out_img
 
 
-def convert_tif_to_png(tif_path: Path) -> Image.Image:
+def convert_tif_to_png(tif_path: Path, target_size: tuple = FULL_IMAGE_SIZE) -> Image.Image:
     img = Image.open(tif_path)
     img = normalize_convert_uint8(img)
-    return img.resize(FULL_IMAGE_SIZE, Image.Resampling.BILINEAR)
+    return img.resize(target_size, Image.Resampling.BILINEAR)
 
 
 def main():

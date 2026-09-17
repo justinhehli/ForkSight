@@ -5,8 +5,11 @@ import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import GridOnIcon from "@mui/icons-material/GridOn";
+import GridOffIcon from "@mui/icons-material/GridOff";
 import { v4 as uuidv4 } from "uuid";
-import { getImageUrl, getMaskUrl } from "../api";
+import { getImageUrl, getMaskUrl, getNeighborImageUrl } from "../api";
+import { NEIGHBOR_OFFSETS, prefetchNeighbors } from "../imageCache";
 import { JunctionType, sortLabelsForDisplay } from "../types";
 import type { ImageAnnotations, Point } from "../types";
 import React from "react";
@@ -60,10 +63,19 @@ const ImageAnnotatorComponent = ({
   const [showMask, setShowMask] = useState(true);
   const [maskAvailable, setMaskAvailable] = useState(true);
   const [hidePoints, setHidePoints] = useState(false);
+  const [showNeighbors, setShowNeighbors] = useState(false);
+  const [failedNeighbors, setFailedNeighbors] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setMaskAvailable(true);
   }, [imageId]);
+
+  // background-load the neighbor tiles as soon as a tile is opened, regardless
+  // of whether they're currently shown, so toggling them on is instant
+  useEffect(() => {
+    setFailedNeighbors(new Set());
+    prefetchNeighbors(project, imageId);
+  }, [project, imageId]);
 
   // keep refs in sync so event-listener closures read fresh values
   const viewRef = useRef(view);
@@ -287,6 +299,7 @@ const ImageAnnotatorComponent = ({
         onSelectRef.current(null);
       }
       if (e.key === "m" || e.key === "M") setShowMask((s) => !s);
+      if (e.key === "n" || e.key === "N") setShowNeighbors((s) => !s);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -317,6 +330,31 @@ const ImageAnnotatorComponent = ({
         setCursor("crosshair");
       }}
     >
+      {/* Neighbor tiles (drawn first so the main image/mask paint on top of them) */}
+      {showNeighbors &&
+        NEIGHBOR_OFFSETS.map(([dRow, dCol]) => {
+          const key = `${dRow},${dCol}`;
+          if (failedNeighbors.has(key)) return null;
+          return (
+            <img
+              key={`${imageId}-neighbor-${key}`}
+              src={getNeighborImageUrl(project, imageId, dRow, dCol)}
+              onError={() => setFailedNeighbors((prev) => new Set(prev).add(key))}
+              draggable={false}
+              alt=""
+              style={{
+                position: "absolute",
+                left: panX + dCol * nw * zoom,
+                top: panY + dRow * nh * zoom,
+                width: nw * zoom,
+                height: nh * zoom,
+                imageRendering: zoom > 3 ? "pixelated" : "auto",
+                pointerEvents: "none",
+              }}
+            />
+          );
+        })}
+
       {/* Image */}
       <img
         ref={imgRef}
@@ -458,6 +496,15 @@ const ImageAnnotatorComponent = ({
               {showMask ? <VisibilityIcon fontSize="small" /> : <VisibilityOffIcon fontSize="small" />}
             </IconButton>
           </span>
+        </Tooltip>
+        <Tooltip title={`${showNeighbors ? "Hide" : "Show"} neighbor tiles (N)`} placement="left">
+          <IconButton
+            size="small"
+            onClick={() => setShowNeighbors((s) => !s)}
+            sx={{ bgcolor: "rgba(0,0,0,0.55)", color: "#fff", "&:hover": { bgcolor: "rgba(0,0,0,0.8)" } }}
+          >
+            {showNeighbors ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+          </IconButton>
         </Tooltip>
         <Tooltip title="Zoom in" placement="left">
           <IconButton

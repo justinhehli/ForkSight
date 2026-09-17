@@ -44,6 +44,7 @@ from AnnotationTool.backend.pipeline.discovery import (
     load_pipeline_settings,
     load_project_tile_settings,
     load_registered_projects,
+    neighbor_tile_path,
     resolve_unc_path,
     save_pipeline_settings,
     save_project_tile_glob_patterns_override,
@@ -357,6 +358,33 @@ def serve_image(project: str, image_id: str):
         raise HTTPException(404, "Source TIF not found")
 
     png = convert_tif_to_png(tif_path)
+    buf = io.BytesIO()
+    png.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+NEIGHBOR_TILE_SIZE = (512, 512)
+
+
+@app.get("/projects/{project:path}/images/{image_id}/neighbor")
+def serve_neighbor_image(project: str, image_id: str, d_row: int, d_col: int):
+    if d_row not in (-1, 0, 1) or d_col not in (-1, 0, 1) or (d_row == 0 and d_col == 0):
+        raise HTTPException(
+            400, "d_row and d_col must each be -1, 0 or 1, and not both 0")
+
+    pd = project_dir(project)
+    ann = load_annotations(pd)
+    img_ann = ann["images"].get(image_id)
+    if img_ann is None:
+        raise HTTPException(404, "Image not found")
+
+    tif_path = pd / img_ann["source_tif"]
+    neighbor_path = neighbor_tile_path(tif_path, d_row, d_col)
+    if neighbor_path is None:
+        raise HTTPException(404, "No neighbor tile in that direction")
+
+    png = convert_tif_to_png(neighbor_path, target_size=NEIGHBOR_TILE_SIZE)
     buf = io.BytesIO()
     png.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png",
