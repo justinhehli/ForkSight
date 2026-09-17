@@ -22,3 +22,5 @@ JunctionDetection/Data/*
 
 *.csv
 !persistencetest.csv
+
+AnnotationTool/frontend/dist/

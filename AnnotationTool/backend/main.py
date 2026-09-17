@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -345,6 +346,26 @@ def list_images(project: str):
     return images
 
 
+# Converting a raw tile (percentile-normalizing + resizing a multi-megapixel TIF, then
+# PNG-encoding the result) costs multiple seconds of CPU - repeating that for every
+# request, including background prefetches, is what made tile switching laggy: a request
+# could end up queued on the server behind a dozen other conversions all competing for
+# the same CPU. Tiles are immutable once ingested, so results are cached in an
+# in-process, bounded LRU - no disk footprint to grow or clean up (it's just cleared
+# whenever the backend restarts), and the fixed entry cap means memory use can't grow
+# without limit either.
+_IMAGE_CACHE_SIZE = 48  # full-res PNGs, ~11MB each -> comfortably under 1GB at capacity
+_NEIGHBOR_CACHE_SIZE = 300  # low-res previews, well under 1MB each
+
+
+@lru_cache(maxsize=_IMAGE_CACHE_SIZE)
+def _convert_image_cached(tif_path: str) -> bytes:
+    png = convert_tif_to_png(Path(tif_path))
+    buf = io.BytesIO()
+    png.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 @app.get("/projects/{project:path}/images/{image_id}")
 def serve_image(project: str, image_id: str):
     pd = project_dir(project)
@@ -357,14 +378,20 @@ def serve_image(project: str, image_id: str):
     if not tif_path.exists():
         raise HTTPException(404, "Source TIF not found")
 
-    png = convert_tif_to_png(tif_path)
-    buf = io.BytesIO()
-    png.save(buf, format="PNG")
-    return Response(content=buf.getvalue(), media_type="image/png",
+    content = _convert_image_cached(str(tif_path))
+    return Response(content=content, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 NEIGHBOR_TILE_SIZE = (512, 512)
+
+
+@lru_cache(maxsize=_NEIGHBOR_CACHE_SIZE)
+def _convert_neighbor_cached(tif_path: str) -> bytes:
+    png = convert_tif_to_png(Path(tif_path), target_size=NEIGHBOR_TILE_SIZE)
+    buf = io.BytesIO()
+    png.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 @app.get("/projects/{project:path}/images/{image_id}/neighbor")
@@ -384,10 +411,10 @@ def serve_neighbor_image(project: str, image_id: str, d_row: int, d_col: int):
     if neighbor_path is None:
         raise HTTPException(404, "No neighbor tile in that direction")
 
-    png = convert_tif_to_png(neighbor_path, target_size=NEIGHBOR_TILE_SIZE)
-    buf = io.BytesIO()
-    png.save(buf, format="PNG")
-    return Response(content=buf.getvalue(), media_type="image/png",
+    # Cached by the neighbor tile's own path (not image_id) - the same physical tile is
+    # a neighbor of up to 8 different "current" tiles, so this is shared across all of them.
+    content = _convert_neighbor_cached(str(neighbor_path))
+    return Response(content=content, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 

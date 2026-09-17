@@ -252,7 +252,13 @@ const App = () => {
 
   // memoized to minimize pre-fetching
   const imageIdsKey = useMemo(() => images.map((i) => i.id).join(","), [images]);
-  const PREFETCH_RADIUS = 3;
+  // Converting a tile is CPU-heavy on the backend (see ImageCache in main.py) - a wide
+  // radius here means a burst of concurrent conversions competing with whichever tile
+  // the user is actually waiting on, which used to be the main source of multi-second
+  // lag on every tile switch. Once a tile's been converted once it's cached on disk and
+  // served instantly, so a small radius (cheap even the first time) is enough - it just
+  // needs to stay a step ahead of normal back/forth browsing.
+  const PREFETCH_RADIUS = 1;
   useEffect(() => {
     if (!selectedProject || images.length === 0) return;
 

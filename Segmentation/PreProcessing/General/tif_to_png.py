@@ -85,6 +85,13 @@ def normalize_convert_uint8(img: Image.Image, soi_coords: Optional[Tuple[int, in
 
 def convert_tif_to_png(tif_path: Path, target_size: tuple = FULL_IMAGE_SIZE) -> Image.Image:
     img = Image.open(tif_path)
+    if target_size != FULL_IMAGE_SIZE:
+        # A smaller target (e.g. low-res neighbor-tile previews) is only used for
+        # spatial context, not precise annotation - downsampling before normalizing
+        # keeps normalize_convert_uint8's percentile scan (the expensive step, cost
+        # scales with pixel count) proportional to the requested resolution instead
+        # of always scanning the full-resolution image just to throw most of it away.
+        img = img.resize(target_size, Image.Resampling.BILINEAR)
     img = normalize_convert_uint8(img)
     return img.resize(target_size, Image.Resampling.BILINEAR)
 

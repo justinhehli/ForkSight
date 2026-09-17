@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   CheckCircle as CheckCircleIcon,
   Circle as CircleIcon,
@@ -10,7 +10,6 @@ import {
   Box,
   Chip,
   IconButton,
-  List,
   ListItem,
   ListItemButton,
   ListItemIcon,
@@ -20,27 +19,47 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import { List as VirtualList, type RowComponentProps } from "react-window";
 import { FORK_GROUPS } from "../types";
 import type { ImageAnnotations, ImageMeta } from "../types";
 
 const REPLICATION_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Replication Fork")!;
 const REVERSED_FORK_GROUP = FORK_GROUPS.find((g) => g.name === "Reversed Fork")!;
 
-interface RowProps {
+const ROW_HEIGHT = 28;
+
+interface VisibleImage {
   img: ImageMeta;
   idx: number;
-  selected: boolean;
-  imgAnnotations: ImageAnnotations | undefined;
-  disabled: boolean;
-  onSelect: (idx: number) => void;
-  onArchive: (imageId: string) => void;
 }
 
-// Memoized per-row: editing the currently-open image only changes that image's entry in
-// `annotations.images` (see handleAnnotationsChange in App.tsx, which spreads the other
-// entries unchanged), so every other row here keeps the exact same props and skips
-// re-rendering. Without this, every point drag/add/delete re-rendered the whole list.
-const ImageListRow = memo(function ImageListRow({ img, idx, selected, imgAnnotations, disabled, onSelect, onArchive }: RowProps) {
+interface RowData {
+  visibleImages: VisibleImage[];
+  imageIdx: number;
+  imageAnnotations: Record<string, ImageAnnotations>;
+  disabled: boolean;
+  onSelectImage: (idx: number) => void;
+  onArchiveImage: (imageId: string) => void;
+}
+
+// Only the rows actually scrolled into view are ever mounted (see the virtualized List
+// below) - real projects here can have 700+ tiles, and mounting a MUI ListItemButton per
+// row for all of them (e.g. switching the "Annotated" filter to "All") used to cause
+// multi-second UI freezes that had nothing to do with image loading.
+function ImageListRow({
+  index,
+  style,
+  visibleImages,
+  imageIdx,
+  imageAnnotations,
+  disabled,
+  onSelectImage,
+  onArchiveImage,
+}: RowComponentProps<RowData>) {
+  const { img, idx } = visibleImages[index];
+  const selected = idx === imageIdx;
+  const imgAnnotations = imageAnnotations[img.id];
+
   let hasReplication = false;
   let hasReversed = false;
   const points = imgAnnotations?.points ?? [];
@@ -57,6 +76,7 @@ const ImageListRow = memo(function ImageListRow({ img, idx, selected, imgAnnotat
   return (
     <ListItem
       disablePadding
+      style={style}
       secondaryAction={
         <Tooltip title="Archive image (can be restored later)">
           <span>
@@ -67,7 +87,7 @@ const ImageListRow = memo(function ImageListRow({ img, idx, selected, imgAnnotat
               disabled={disabled}
               onClick={(e) => {
                 e.stopPropagation();
-                onArchive(img.id);
+                onArchiveImage(img.id);
               }}
             >
               <DeleteOutlineIcon sx={{ fontSize: 15 }} />
@@ -76,7 +96,13 @@ const ImageListRow = memo(function ImageListRow({ img, idx, selected, imgAnnotat
         </Tooltip>
       }
     >
-      <ListItemButton selected={selected} onClick={() => onSelect(idx)} sx={{ py: 0.25, pr: 4.5 }} disabled={disabled}>
+      <ListItemButton
+        dense
+        selected={selected}
+        onClick={() => onSelectImage(idx)}
+        sx={{ py: 0.25, pr: 4.5 }}
+        disabled={disabled}
+      >
         <ListItemIcon sx={{ minWidth: 28 }}>
           {img.processed ? (
             <CheckCircleIcon sx={{ fontSize: 16 }} color="success" />
@@ -105,7 +131,7 @@ const ImageListRow = memo(function ImageListRow({ img, idx, selected, imgAnnotat
       </ListItemButton>
     </ListItem>
   );
-});
+}
 
 interface Props {
   images: ImageMeta[];
@@ -151,6 +177,16 @@ const ImageListPanel = memo(function ImageListPanel({
     [images, filter, imageAnnotations],
   );
 
+  const rowProps = useMemo<RowData>(
+    () => ({ visibleImages, imageIdx, imageAnnotations, disabled, onSelectImage, onArchiveImage }),
+    [visibleImages, imageIdx, imageAnnotations, disabled, onSelectImage, onArchiveImage],
+  );
+
+  // stable identity required by react-window - keying by image id (rather than the
+  // default row index) keeps a row's DOM/ripple state tied to the actual image across
+  // filter changes, instead of getting reused for whatever image lands on that index
+  const rowKey = useCallback((index: number, data: RowData) => data.visibleImages[index].img.id, []);
+
   return (
     <>
       <Box sx={{ px: 1.5, pt: 1, display: "flex", alignItems: "center", gap: 1 }}>
@@ -192,25 +228,22 @@ const ImageListPanel = memo(function ImageListPanel({
           <ToggleButton value="annotated">Annotated</ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      <List dense disablePadding sx={{ flex: 1, overflowY: "auto", mt: 0.5 }}>
-        {visibleImages.length === 0 && (
+      <Box sx={{ flex: 1, minHeight: 0, mt: 0.5 }}>
+        {visibleImages.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ px: 1.5, py: 1 }}>
             No images match this filter.
           </Typography>
-        )}
-        {visibleImages.map(({ img, idx }) => (
-          <ImageListRow
-            key={img.id}
-            img={img}
-            idx={idx}
-            selected={idx === imageIdx}
-            imgAnnotations={imageAnnotations[img.id]}
-            disabled={disabled}
-            onSelect={onSelectImage}
-            onArchive={onArchiveImage}
+        ) : (
+          <VirtualList
+            rowComponent={ImageListRow}
+            rowCount={visibleImages.length}
+            rowHeight={ROW_HEIGHT}
+            rowProps={rowProps}
+            rowKey={rowKey}
+            style={{ height: "100%" }}
           />
-        ))}
-      </List>
+        )}
+      </Box>
     </>
   );
 });
