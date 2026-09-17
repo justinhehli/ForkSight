@@ -30,6 +30,10 @@ const hashString = (s: string): number => {
 export const labelColor = (label: string): string =>
   LABEL_COLORS[label] ?? CUSTOM_LABEL_PALETTE[hashString(label) % CUSTOM_LABEL_PALETTE.length];
 
+// Screen-space (not scaled by zoom) gap between neighbor tiles, so it stays a small
+// constant margin at any zoom level instead of growing/shrinking with it.
+const NEIGHBOR_GAP = 4;
+
 interface View {
   panX: number;
   panY: number;
@@ -356,10 +360,13 @@ const ImageAnnotatorComponent = ({
               alt=""
               style={{
                 position: "absolute",
-                left: panX + dCol * nw * zoom,
-                top: panY + dRow * nh * zoom,
-                width: nw * zoom,
-                height: nh * zoom,
+                // inset by half the gap on every side, so neighbor tiles are separated by
+                // a small constant on-screen margin (not scaled by zoom) instead of
+                // butting up against each other and the main tile
+                left: panX + dCol * nw * zoom + NEIGHBOR_GAP / 2,
+                top: panY + dRow * nh * zoom + NEIGHBOR_GAP / 2,
+                width: nw * zoom - NEIGHBOR_GAP,
+                height: nh * zoom - NEIGHBOR_GAP,
                 imageRendering: zoom > 3 ? "pixelated" : "auto",
                 pointerEvents: "none",
               }}
