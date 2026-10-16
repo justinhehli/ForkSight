@@ -33,6 +33,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from Segmentation.Util.patch_grid_util import load_binary_mask_pred_patches
 import numpy as np
 import pandas as pd
 import torch
@@ -60,7 +61,6 @@ from Evaluation.fiber_evaluation import (
 
 _JUNCTION_TYPE_3_WAY = "3-way"
 _JUNCTION_TYPE_4_WAY = "4-way"
-_N_PATCHES = GRID_SIZE[0] * GRID_SIZE[1]
 
 
 def _label_to_junction_type(label: str) -> str | None:
@@ -400,19 +400,6 @@ def _compute_image_level_metrics(image_stats: list[dict]) -> dict:
     }
 
 
-def _load_pred_patches(model_pred_dir: Path, image_stem: str) -> torch.Tensor:
-    """Load _N_PATCHES patch PNGs for one full image as a (N, 1, H, W) tensor."""
-    patches = []
-    for idx in range(_N_PATCHES):
-        patch_path = model_pred_dir / f"{image_stem}_patch_{idx:02d}.png"
-        arr = np.array(Image.open(patch_path))
-        if arr.ndim == 3:
-            arr = arr[..., 0]
-        mask = torch.from_numpy((arr > 0).astype(np.float32)).unsqueeze(0)
-        patches.append(mask)
-    return torch.stack(patches)
-
-
 def _process_image(
     pred_mask_patches: torch.Tensor,
     gt_annotations: list[dict],
@@ -459,7 +446,8 @@ def _process_image(
             r["source"] = source
         return pred_rows, fn_annots, coords_3way, coords_4way, skeleton
 
-    raw_pred_rows, raw_fn_annots, _, _, _ = _detect_and_match(raw_stitched, "raw")
+    raw_pred_rows, raw_fn_annots, _, _, _ = _detect_and_match(
+        raw_stitched, "raw")
     pp_pred_rows, pp_fn_annots, pp_coords_3way, pp_coords_4way, pp_skeleton = _detect_and_match(
         pp_stitched, "pp")
 
@@ -554,7 +542,8 @@ def _evaluate_model(
             raise ValueError(
                 f"No GT annotations found for image stem '{stem}' in CSV.")
 
-        pred_mask_patches = _load_pred_patches(model_pred_dir, stem)
+        pred_mask_patches, _ = load_binary_mask_pred_patches(
+            model_pred_dir, stem)
 
         raw_preds, raw_fns, pp_preds, pp_fns, \
             pp_stitched, pp_coords_3way, pp_coords_4way, pp_skeleton = _process_image(

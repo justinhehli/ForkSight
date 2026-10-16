@@ -1,0 +1,6 @@
+# Stage 1 of 2 for the annotation tool's pipeline venv 
+# Pinned to match the training environment: torch 2.8.0 + CUDA 12.9.
+
+--extra-index-url https://download.pytorch.org/whl/cu129
+torch==2.8.0+cu129
+torchvision==0.23.0+cu129

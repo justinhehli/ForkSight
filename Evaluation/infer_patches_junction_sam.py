@@ -43,6 +43,7 @@ from Evaluation.pipeline_evaluation_shared import (
     load_full_image_as_patches,
     predict_patches_batched,
 )
+from Segmentation.Util.patch_grid_util import pred_patch_filename
 from Evaluation.compute_metrics_config import (
     SAM_MODELS_RUNS,
     SAM_PARAMS_ARTIFACT_SUFFIX,
@@ -58,7 +59,7 @@ def _save_pred_patches(
     for idx in range(patches.shape[0]):
         arr = (patches[idx, 0].cpu().numpy() * 255).astype(np.uint8)
         Image.fromarray(arr).save(
-            model_pred_dir / f"{image_stem}_patch_{idx:02d}.png")
+            model_pred_dir / pred_patch_filename(image_stem, idx))
 
 
 def main():

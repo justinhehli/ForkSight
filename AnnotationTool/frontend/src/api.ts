@@ -1,0 +1,189 @@
+import {
+  ImageAnnotations,
+  ImageMeta,
+  PipelineProgress,
+  PipelineSettings,
+  ProjectAnnotations,
+  ProjectCandidate,
+  ProjectTileSettings,
+} from "./types";
+
+// const BASE = "http://localhost:8000";
+const BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
+
+const encodeProjectPath = (project: string) => project.split("/").map(encodeURIComponent).join("/");
+
+export const getImageUrl = (project: string, imageId: string) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}`;
+
+export const getMaskUrl = (project: string, imageId: string) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/mask`;
+
+// dRow/dCol are each -1, 0 or 1 (not both 0) - the 8 tile positions directly
+// surrounding imageId's tile.
+export const getNeighborImageUrl = (project: string, imageId: string, dRow: number, dCol: number) =>
+  `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/neighbor?d_row=${dRow}&d_col=${dCol}`;
+
+const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.json() as Promise<T>;
+};
+
+export const getEnvironment = () => request<{ environment: "PROD" | "DEV" | "TRAIN" }>(`${BASE}/environment`);
+
+export const getProjects = () => request<string[]>(`${BASE}/projects`);
+
+// liveness check used while waiting for the backend to restart
+// (registering a new project restarts the sandboxed backend)
+export const pingBackend = async (timeoutMs = 1500): Promise<boolean> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${BASE}/projects`, { signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export const getImages = (project: string) =>
+  request<ImageMeta[]>(`${BASE}/projects/${encodeProjectPath(project)}/images`);
+
+export const getAnnotations = (project: string) =>
+  request<ProjectAnnotations>(`${BASE}/projects/${encodeProjectPath(project)}/annotations`);
+
+export const saveImageAnnotations = async (project: string, imageId: string, data: ImageAnnotations): Promise<void> => {
+  const response = await fetch(
+    `${BASE}/projects/${encodeProjectPath(project)}/annotations/${encodeURIComponent(imageId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+};
+
+export const archiveImage = async (project: string, imageId: string): Promise<void> => {
+  const response = await fetch(
+    `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/archive`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+};
+
+export const unarchiveImage = async (project: string, imageId: string): Promise<void> => {
+  const response = await fetch(
+    `${BASE}/projects/${encodeProjectPath(project)}/images/${encodeURIComponent(imageId)}/unarchive`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+};
+
+export const exportProject = async (project: string): Promise<Blob> => {
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/export`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.blob();
+};
+
+export const exportProjectExcel = async (project: string): Promise<Blob> => {
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/export-excel`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.blob();
+};
+
+export const runJunctionDetection = (project: string, amount?: number) =>
+  request<{ status: string; project: string }>(
+    `${BASE}/projects/${encodeProjectPath(project)}/run-junction-detection`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: amount ?? null }),
+    },
+  );
+
+export const stopJunctionDetection = (project: string) =>
+  request<{ status: string; project: string }>(
+    `${BASE}/projects/${encodeProjectPath(project)}/stop-junction-detection`,
+    {
+      method: "POST",
+    },
+  );
+
+export const getPipelineStatus = () => request<{ running_project: string | null }>(`${BASE}/pipeline-status`);
+
+export const getPipelineProgress = (project: string) =>
+  request<PipelineProgress>(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-progress`);
+
+export const getPipelineLog = async (project: string): Promise<string> => {
+  const response = await fetch(`${BASE}/projects/${encodeProjectPath(project)}/pipeline-log`);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${await response.text()}`);
+  }
+
+  return response.text();
+};
+
+export const addCustomLabel = (project: string, label: string) =>
+  request<string[]>(`${BASE}/projects/${encodeProjectPath(project)}/labels`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+
+export const deleteCustomLabel = (project: string, label: string) =>
+  request<string[]>(`${BASE}/projects/${encodeProjectPath(project)}/labels/${encodeURIComponent(label)}`, {
+    method: "DELETE",
+  });
+
+export const getProjectCandidates = () => request<ProjectCandidate[]>(`${BASE}/project-candidates`);
+
+export const getProjectFolderPath = (name: string) =>
+  request<{ path: string }>(`${BASE}/project-candidates/${encodeProjectPath(name)}/path`);
+
+export const setRegisteredProjects = (names: string[]) =>
+  request<ProjectCandidate[]>(`${BASE}/project-candidates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+
+export const getPipelineSettings = () => request<PipelineSettings>(`${BASE}/pipeline-settings`);
+
+export const setPipelineSettings = (settings: PipelineSettings) =>
+  request<PipelineSettings>(`${BASE}/pipeline-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+
+export const getProjectTileSettings = (project: string) =>
+  request<ProjectTileSettings>(`${BASE}/projects/${encodeProjectPath(project)}/tile-settings`);
+
+export const setProjectTileSettings = (project: string, tileGlobPatterns: string[] | null) =>
+  request<ProjectTileSettings>(`${BASE}/projects/${encodeProjectPath(project)}/tile-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tile_glob_patterns: tileGlobPatterns }),
+  });

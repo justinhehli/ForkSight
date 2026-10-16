@@ -69,7 +69,7 @@ from Evaluation.fiber_evaluation import (
     match_gt_to_fibers,
     compute_fiber_metrics,
 )
-from Segmentation.Util.nnunet_wandb_util import (
+from Segmentation.Util.nnunet_util import (
     initialize_nnunet_predictor,
     nnunet_folder_name,
 )

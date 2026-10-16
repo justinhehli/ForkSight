@@ -1,6 +1,8 @@
 # Environment Variables
 
-The table below lists all required environment variables to run dataset preparation, training and evaluation scripts and notebooks. Some variables may be overridden "from the outside", e.g. during hyperparameter tuning ("sweeps").   
+The table below lists all required environment variables to run dataset preparation, training and evaluation scripts and notebooks. Some variables may be overridden "from the outside", e.g. during hyperparameter tuning ("sweeps").
+
+These live in `Environment/.env`, except for the `POSTPROCESSING_*` variables, which live in `Environment/shared.env` which holds only the variables read by library code shared between training/evaluation code and the deployed annotation-tool pipeline (`AnnotationTool/`)
 
 | Parameter                        | Description                                                |
 | -------------------------------- | ---------------------------------------------------------- |
@@ -66,5 +68,11 @@ The table below lists all required environment variables to run dataset preparat
 | EARLY_STOPPING_DELTA             | Minimum improvement considered progress                    |
 | EARLY_STOPPING_MIN_EPOCHS        | Minimum epochs before early stopping can activate          |
 | HUGGINGFACE_TOKEN                | Access token for Hugging Face models (keep private)        |
+
+`Environment/shared.env` (shared with the deployed annotation-tool pipeline, see above):
+
+| Parameter                        | Description                                                |
+| -------------------------------- | ---------------------------------------------------------- |
 | POSTPROCESSING_MIN_OBJ_SIZE      | Minimum size in pixels for objects in segmentation masks, smaller objects will be removed in postprocessing. If left empty, small objects won't be removed        |
 | POSTPROCESSING_CONNECT_DIAGONALLY      | A boolean that indicates whether pixels in segmentation masks that are connected diagonally are considered for connected features/elements        |
+| POSTPROCESSING_SMALL_BBOX_THRESHOLD | Connected components whose bounding box width AND height are both below this threshold are excluded from junction detection. If left unset, no components are excluded this way |

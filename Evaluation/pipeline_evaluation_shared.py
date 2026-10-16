@@ -9,10 +9,7 @@ from PIL import Image
 from Segmentation.PostProcessing.segmentation_postprocessing import extract_mask_elements_bboxes, postprocess_segmentation_masks, stitch_mask_tiles, remove_small_objects_from_batch
 from JunctionDetection.SkeletonizeDetect.segmentation_junction_detection import detect_junctions_in_segmentation_mask
 from Evaluation.evaluation_util import format_score, hard_dice_score, iou_score, hard_clDice, get_betti_at_thresholds, plot_betti_curve, get_batched_input_list
-
-
-PATCH_SIZE = (1024, 1024)
-GRID_SIZE = (4, 4)
+from Segmentation.Util.patch_grid_util import PATCH_SIZE, GRID_SIZE
 
 
 def show_mask(mask, ax, color: np.ndarray = None):
