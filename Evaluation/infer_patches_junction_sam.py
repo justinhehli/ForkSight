@@ -16,12 +16,15 @@ Output layout under JUNCTION_PRED_DIR:
 Required environment variables (loaded via load_forksight_env):
   JUNCTION_DETECTION_DATASET_DIR   root of the junction detection dataset
   JUNCTION_PRED_DIR                output directory for predictions
+  (both can be overridden with --dataset-dir / --pred-dir, see
+   Evaluation/junction_eval_paths.py)
   WANDB_ENTITY                     WandB entity
   WANDB_SAM_PROJECT                WandB SAM project name
 
 Usage:
   python infer_patches_junction_sam.py [--device N] [--batch-size N]
                                        [--is-test] [--force-rerun]
+                                       [--dataset-dir DIR] [--pred-dir DIR]
 """
 
 import argparse
@@ -35,6 +38,10 @@ import wandb
 from PIL import Image
 
 import Environment.env_utils as env_utils
+from Evaluation.junction_eval_paths import (
+    add_junction_eval_path_args,
+    resolve_junction_eval_paths,
+)
 from Segmentation.SAM.sam_lora_util import (
     get_params_from_artifact,
     initialize_sam_lora_with_params,
@@ -75,23 +82,16 @@ def main():
                         help="Only infer the first test image per model")
     parser.add_argument("--force-rerun", action="store_true",
                         help="Re-run inference even if output already exists")
+    add_junction_eval_path_args(parser)
     args = parser.parse_args()
 
     env_utils.load_forksight_env()
 
-    JUNCTION_DETECTION_DATASET_DIR = os.getenv(
-        "JUNCTION_DETECTION_DATASET_DIR")
-    JUNCTION_PRED_DIR = os.getenv("JUNCTION_PRED_DIR")
     WANDB_ENTITY = os.getenv("WANDB_ENTITY", "EM_IMCR_BIOVSION")
     WANDB_SAM_PROJECT = os.getenv("WANDB_SAM_PROJECT", "ForkSight-SAM")
 
-    if JUNCTION_DETECTION_DATASET_DIR is None:
-        raise ValueError(
-            "JUNCTION_DETECTION_DATASET_DIR environment variable must be set.")
-    if JUNCTION_PRED_DIR is None:
-        raise ValueError("JUNCTION_PRED_DIR environment variable must be set.")
-
-    test_images_dir = (Path(JUNCTION_DETECTION_DATASET_DIR) / "images")
+    eval_paths = resolve_junction_eval_paths(args)
+    test_images_dir = eval_paths.dataset_dir / "images"
     if not test_images_dir.is_dir():
         raise FileNotFoundError(
             f"Test images directory not found: {test_images_dir}")
@@ -106,7 +106,7 @@ def main():
     print(f"Using device: {device}")
     print(f"Found {len(test_image_paths)} test image(s).")
 
-    pred_base = Path(JUNCTION_PRED_DIR)
+    pred_base = eval_paths.pred_dir
     pred_base.mkdir(parents=True, exist_ok=True)
 
     api = wandb.Api()

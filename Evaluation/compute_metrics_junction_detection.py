@@ -20,8 +20,12 @@ Required environment variables (loaded via load_forksight_env):
   JUNCTION_PRED_DIR                directory with per-model prediction subdirs
   JUNCTION_MATCHING_THRESHOLD      max pixel distance for GT↔pred match
                                    (optional, default 75)
+The dataset / prediction dirs can be overridden with --dataset-dir / --pred-dir
+(see Evaluation/junction_eval_paths.py).
 
-Outputs (written to EVALUATION_OUTPUT_DIR/junction_detection/<timestamp>/):
+Outputs (written to EVALUATION_OUTPUT_DIR/junction_detection/<timestamp>/, or
+EVALUATION_OUTPUT_DIR/junction_detection_<dataset dir name>/<timestamp>/ when
+--dataset-dir points to a different dataset):
   predictions_<model>.csv   one row per detected junction per image
   metrics.csv               per-model aggregate metrics
 """
@@ -46,6 +50,10 @@ from Segmentation.PostProcessing.segmentation_postprocessing import (
 )
 from JunctionDetection.SkeletonizeDetect.segmentation_junction_detection import (
     detect_junctions_in_segmentation_mask,
+)
+from Evaluation.junction_eval_paths import (
+    add_junction_eval_path_args,
+    resolve_junction_eval_paths,
 )
 from Evaluation.pipeline_evaluation_shared import (
     load_full_image_as_patches,
@@ -322,17 +330,25 @@ def _compute_metrics(
 
 
 _SAMPLE_DATE_PREFIX_RE = re.compile(r"^\d{8}_")
+# synthetic images: <class>_f<fiber_min>-<fiber_max>_<index>
+_SYNTHETIC_STEM_RE = re.compile(
+    r"^((?:negative|replication_fork|reversed_fork)_f\d+-\d+)_\d+$")
 
 
 def _image_to_sample(stem: str) -> str:
     """Map an image stem to its sample name.
 
     Strips any leading 8-digit date prefix and takes everything before
-    ``_tileset_`` (case-insensitive).  Examples:
+    ``_tileset_`` (case-insensitive).  Synthetic images are grouped by
+    class and fiber range.  Examples:
       Dani_Funghi_TileSet_11_Tile_014-015     -> dani_funghi
       20240425_andrea_lila_tileset_14_tile... -> andrea_lila
       Veronica_Sample1_TileSet_19_Tile_011-008 -> veronica_sample1
+      replication_fork_f3-8_0002              -> replication_fork_f3-8
     """
+    synthetic_match = _SYNTHETIC_STEM_RE.match(stem)
+    if synthetic_match:
+        return synthetic_match.group(1)
     s = stem.lower()
     s = _SAMPLE_DATE_PREFIX_RE.sub("", s)
     if "_tileset_" in s:
@@ -892,27 +908,21 @@ def main():
                         help="Save stitched-image plots with junction markers per model")
     parser.add_argument("--plot-skeleton", action="store_true",
                         help="Overlay skeleton on plots (only if --plot is set)")
+    add_junction_eval_path_args(parser)
     args = parser.parse_args()
 
     env_utils.load_forksight_env()
 
     EVALUATION_OUTPUT_DIR = os.getenv("EVALUATION_OUTPUT_DIR")
-    JUNCTION_DETECTION_DATASET_DIR = os.getenv(
-        "JUNCTION_DETECTION_DATASET_DIR")
-    JUNCTION_PRED_DIR = os.getenv("JUNCTION_PRED_DIR")
     JUNCTION_MATCHING_THRESHOLD = env_utils.load_as(
         "JUNCTION_MATCHING_THRESHOLD", float, 75.0)
 
     if EVALUATION_OUTPUT_DIR is None:
         raise ValueError(
             "EVALUATION_OUTPUT_DIR environment variable must be set.")
-    if JUNCTION_DETECTION_DATASET_DIR is None:
-        raise ValueError(
-            "JUNCTION_DETECTION_DATASET_DIR environment variable must be set.")
-    if JUNCTION_PRED_DIR is None:
-        raise ValueError("JUNCTION_PRED_DIR environment variable must be set.")
+    eval_paths = resolve_junction_eval_paths(args)
 
-    test_dir = Path(JUNCTION_DETECTION_DATASET_DIR)
+    test_dir = eval_paths.dataset_dir
     test_images_dir = test_dir / "images"
     test_labels_csv = test_dir / "relabeling_data.csv"
 
@@ -927,7 +937,7 @@ def main():
     if not test_image_paths:
         raise FileNotFoundError(f"No image files found in {test_images_dir}")
 
-    pred_base = Path(JUNCTION_PRED_DIR)
+    pred_base = eval_paths.pred_dir
     model_dirs = sorted(
         d for d in pred_base.iterdir()
         if d.is_dir() and (d / "metadata.json").is_file()
@@ -941,7 +951,7 @@ def main():
           f"{len(model_dirs)} model prediction dir(s).")
     print(f"Matching threshold: {JUNCTION_MATCHING_THRESHOLD} px")
 
-    out_base = Path(EVALUATION_OUTPUT_DIR) / "junction_detection"
+    out_base = eval_paths.output_dir(EVALUATION_OUTPUT_DIR)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = out_base / timestamp
     out_dir.mkdir(parents=True, exist_ok=True)

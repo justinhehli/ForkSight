@@ -11,6 +11,8 @@
 # Junction detection evaluation job.
 # Expected env vars (passed via --export):
 #   STAGE   — one of: nnunet | sam | metrics
+# Any script arguments (e.g. --dataset-dir DIR [--pred-dir DIR]) are forwarded
+# to the stage's python script.
 
 set -euo pipefail
 
@@ -33,15 +35,15 @@ mkdir -p "/scratch/jhehli/logs"
 case "$STAGE" in
     nnunet)
         source ~/.nnUNet_env/bin/activate
-        srun python -u -m Evaluation.infer_patches_junction_nnunet
+        srun python -u -m Evaluation.infer_patches_junction_nnunet "$@"
         ;;
     sam)
         source "$SAM_LORA_VENV/bin/activate"
-        srun python -u -m Evaluation.infer_patches_junction_sam --batch-size 8
+        srun python -u -m Evaluation.infer_patches_junction_sam --batch-size 8 "$@"
         ;;
     metrics)
         source "$SAM_LORA_VENV/bin/activate"
-        srun python -u -m Evaluation.compute_metrics_junction_detection --plot --plot-skeleton --force-recompute
+        srun python -u -m Evaluation.compute_metrics_junction_detection --plot --plot-skeleton --force-recompute "$@"
         ;;
     *)
         echo "Error: unknown STAGE '${STAGE}'. Valid options: nnunet | sam | metrics"
